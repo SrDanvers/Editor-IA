@@ -15,16 +15,16 @@ Editor local para Windows 10 (64 bits), PowerShell 5.1 e FFmpeg. Interface escur
 
 1. Copie a pasta de videos do celular para o computador (no Explorador do Windows, copie a pasta DCIM ou DennyCamera inteira e cole em Documentos).\n2. Clique em **Adicionar pasta** para importar de uma vez todos os videos da pasta e das subpastas. Ou use **Adicionar arquivos** com Ctrl+A para selecionar todos os arquivos da pasta.
 3. Clique em **Salvar em...** e escolha um novo arquivo .mp4.
-4. Confira o caminho do **ffmpeg.exe**. O **ffprobe.exe** deve estar na mesma pasta.
-5. Clique em **CRIAR VLOG AUTOMATICAMENTE**.
-6. Aguarde a conclusao e abra a pasta de saida.
+4. Escolha **4K (3840x2160)** para manter a resolucao das gravacoes; tambem ha 1080p e 720p.\n5. Confira o caminho do **ffmpeg.exe**. O **ffprobe.exe** deve estar na mesma pasta.
+6. Clique em **CRIAR VLOG AUTOMATICAMENTE**.
+7. Aguarde a conclusao e abra a pasta de saida.
 
 ## O que esta versao faz
 
 - Detecta pausas usando `silencedetect` do FFmpeg.
 - Prioriza trechos com audio ativo, divididos em segmentos de ate 16 segundos.
 - Seleciona uma duracao aproximada de 35% do material, com limite maximo de 4 minutos.
-- Monta MP4 H.264/AAC em 1280x720, 24 quadros/s e 2 threads de codificacao.
+- Monta MP4 H.264/AAC, com 4K 3840x2160 como padrao e opcoes 1080p e 720p; saida em 30 quadros/s e 2 threads de codificacao.\n- Exportacao 4K usa o material original, mas recodifica e pode demorar bastante em CPUs antigas; preservar resolucao nao significa qualidade idêntica bit a bit. Videos menores podem ser ampliados ao escolher 4K.
 - Processa localmente, sem API paga nem upload de videos.
 
 **Limitacao:** este sistema usa regras de audio para escolher trechos. Nao compreende o significado das falas nem identifica automaticamente os momentos mais interessantes como uma IA multimodal. A exportacao no seu Windows ainda precisa ser testada. A reproducao de alguns formatos de origem pode falhar dependendo dos codecs.
