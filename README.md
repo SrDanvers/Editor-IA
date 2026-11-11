@@ -22,8 +22,8 @@ Editor local para Windows 10 (64 bits), PowerShell 5.1 e FFmpeg. Interface escur
 ## O que esta versao faz
 
 - Detecta pausas usando `silencedetect` do FFmpeg.
-- Prioriza trechos com audio ativo, divididos em segmentos de ate 16 segundos.
-- Seleciona uma duracao aproximada de 35% do material, com limite maximo de 4 minutos.
+- Prioriza cenas mais longas (geralmente 25 a 40 segundos), juntando pausas curtas para preservar frases.\n- Tenta usar uma cena diferente de cada video antes de repetir a origem. Com ate 6 arquivos, pode adicionar uma segunda cena separada por pelo menos 8 segundos, sem sobreposicao.\n- Evita importar o mesmo caminho de arquivo duas vezes. Nao detecta se dois arquivos diferentes contem imagens identicas.
+- Define a duracao automaticamente conforme a quantidade de arquivos e o material aproveitavel, com limite superior de 10 minutos. Nao ha garantia de utilizar todos os arquivos se o tempo disponivel for insuficiente.
 - Monta MP4 H.264/AAC, com 4K 3840x2160 como padrao e opcoes 1080p e 720p; saida em 30 quadros/s e 2 threads de codificacao.\n- Exportacao 4K usa o material original, mas recodifica e pode demorar bastante em CPUs antigas; preservar resolucao nao significa qualidade idêntica bit a bit. Videos menores podem ser ampliados ao escolher 4K.
 - Processa localmente, sem API paga nem upload de videos.
 
