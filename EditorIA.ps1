@@ -28,6 +28,59 @@ if($Worker){
    }catch{}
    return [IO.File]::GetLastWriteTime($path)
  }
+ function TranscriptRegions($v){
+   # Opcional e pago. Somente audio mono comprimido e enviado a API.
+   $answer=New-Object System.Collections.ArrayList
+   if(-not [bool]$j.transcribe -or -not $v.audio -or -not $env:OPENAI_API_KEY){return $answer}
+   Add-Type -AssemblyName System.Net.Http
+   [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
+   $limit=[Math]::Min([double]$v.duration,600.0)
+   $count=[int][Math]::Ceiling($limit/90.0)
+   $transcriptLog=Join-Path (Split-Path $JobPath) 'transcricoes.txt'
+   for($part=0;$part -lt $count;$part++){
+     CheckCancel
+     $offset=$part*90.0
+     $length=[Math]::Min(90.0,$limit-$offset)
+     $audio=Join-Path $temporary ("fala_"+$index+"_"+$part+".mp3")
+     $prior=$ErrorActionPreference;$ErrorActionPreference='Continue'
+     try { $capture= & $j.ffmpeg -hide_banner -loglevel error -nostdin -y -ss (Fmt $offset) -i ([string]$v.path) -t (Fmt $length) -vn -ac 1 -ar 16000 -b:a 48k $audio 2>&1 | Out-String; $code=$LASTEXITCODE } finally {$ErrorActionPreference=$prior}
+     if($code -ne 0 -or -not(Test-Path -LiteralPath $audio)){continue}
+     $client=$null;$form=$null;$stream=$null
+     try{
+       $client=[Net.Http.HttpClient]::new()
+       $client.Timeout=[TimeSpan]::FromSeconds(120)
+       $client.DefaultRequestHeaders.Authorization=[Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer',$env:OPENAI_API_KEY)
+       $form=[Net.Http.MultipartFormDataContent]::new()
+       $stream=[IO.File]::OpenRead($audio)
+       $fileContent=[Net.Http.StreamContent]::new($stream)
+       $fileContent.Headers.ContentType=[Net.Http.Headers.MediaTypeHeaderValue]::new('audio/mpeg')
+       $form.Add($fileContent,'file',[IO.Path]::GetFileName($audio))
+       $form.Add([Net.Http.StringContent]::new('whisper-1'),'model')
+       $form.Add([Net.Http.StringContent]::new('verbose_json'),'response_format')
+       $form.Add([Net.Http.StringContent]::new('segment'),'timestamp_granularities[]')
+       $form.Add([Net.Http.StringContent]::new('pt'),'language')
+       $res=$client.PostAsync('https://api.openai.com/v1/audio/transcriptions',$form).GetAwaiter().GetResult()
+       $raw=$res.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+       if(-not $res.IsSuccessStatusCode){throw "API HTTP $([int]$res.StatusCode)"}
+       $data=$raw | ConvertFrom-Json
+       foreach($seg in @($data.segments)){
+         $start=[double]$seg.start+$offset
+         $end=[double]$seg.end+$offset
+         if($end -le $start){continue}
+         [void]$answer.Add(@{start=$start;end=$end;text=([string]$seg.text).Trim()})
+         Add-Content -LiteralPath $transcriptLog -Encoding UTF8 -Value ("$([IO.Path]::GetFileName($v.path)) [$([Math]::Round($start,2))-$([Math]::Round($end,2))]: "+([string]$seg.text).Trim())
+       }
+     }catch{
+       Add-Content -LiteralPath (Join-Path (Split-Path $JobPath) 'transcricao_erros.txt') -Encoding UTF8 -Value ("$([IO.Path]::GetFileName($v.path)): "+$_.Exception.Message)
+     }finally{
+       if($form){$form.Dispose()}
+       if($stream){$stream.Dispose()}
+       if($client){$client.Dispose()}
+       Remove-Item -LiteralPath $audio -Force -ErrorAction SilentlyContinue
+     }
+   }
+   return $answer
+ }
  function Execute([string[]]$ffArgs){
    CheckCancel
    $log=Join-Path (Split-Path $JobPath) 'ffmpeg.log'
@@ -103,9 +156,34 @@ if($Worker){
        }else{[void]$merged.Add(@{start=[double]$r.start;end=[double]$r.end})}
      }
      $options=New-Object System.Collections.ArrayList
+     # Preferir blocos inteiros identificados por transcricao. Nao dividir segmentos.
+     $speech=@()
+     if([bool]$j.transcribe -and $v.audio){
+       Report ([int](5+20*$index/$info.Count)) ("Transcrevendo fala do video "+$index+" de "+$info.Count)
+       $speech=@(TranscriptRegions $v)
+     }
+     if($speech.Count -gt 0){
+       $groupStart=$null;$groupEnd=0.0
+       foreach($seg in @($speech | Sort-Object start)){
+         $ss=[double]$seg.start;$ee=[double]$seg.end
+         if($null -eq $groupStart){$groupStart=$ss;$groupEnd=$ee;continue}
+         # Pausa acima de 2,5s: concluir bloco antes de iniciar outro.
+         if(($ss-$groupEnd) -gt 2.5){
+           $left=[Math]::Max(0,$groupStart-0.6)
+           $right=[Math]::Min([double]$v.duration,$groupEnd+0.8)
+           if(($right-$left) -gt 2){[void]$options.Add(@{start=$left;length=($right-$left)})}
+           $groupStart=$ss;$groupEnd=$ee
+         }else{$groupEnd=[Math]::Max($groupEnd,$ee)}
+       }
+       if($null -ne $groupStart){
+         $left=[Math]::Max(0,$groupStart-0.6)
+         $right=[Math]::Min([double]$v.duration,$groupEnd+0.8)
+         if(($right-$left) -gt 2){[void]$options.Add(@{start=$left;length=($right-$left)})}
+       }
+     }
      # Apenas cortes em pausas detectadas. Margem de 0,45s antes/depois da fala.
      # NAO dividir falas por limite arbitrario de 40 segundos.
-     foreach($r in $merged){
+     if($options.Count -eq 0){foreach($r in $merged){
        $rawStart=[double]$r.start
        $rawEnd=[double]$r.end
        $start=[Math]::Max(0,$rawStart-0.45)
@@ -113,7 +191,7 @@ if($Worker){
        if(($end-$start) -ge 4){
          [void]$options.Add(@{start=$start;length=($end-$start)})
        }
-     }
+     }}
      if($options.Count -eq 0){
        # Sem pausas confiaveis: conservar o video inteiro, sem cortar frases.
        [void]$options.Add(@{start=0.0;length=[double]$v.duration})
@@ -154,6 +232,21 @@ if($Worker){
      }
    }
    if($clips.Count -eq 0){throw 'Nenhum trecho valido encontrado'}
+   # Revisao e auditoria: plano cronologico antes da exportacao.
+   $cutRows=@()
+   $number=0
+   foreach($cut in @($clips | Sort-Object order,start)){
+     $number++
+     $cutRows+= [pscustomobject]@{
+       numero=$number
+       arquivo=[IO.Path]::GetFileName([string]$cut.path)
+       inicio_segundos=[Math]::Round([double]$cut.start,2)
+       fim_segundos=[Math]::Round(([double]$cut.start+[double]$cut.length),2)
+       duracao_segundos=[Math]::Round([double]$cut.length,2)
+     }
+   }
+   $cutRows | Export-Csv -LiteralPath (Join-Path (Split-Path $JobPath) 'plano_cortes.csv') -Delimiter ';' -NoTypeInformation -Encoding UTF8
+
    # Analise visual opcional: apenas dois quadros de alguns cortes escolhidos.
    $visionOn=([bool]$j.visual) -and (-not [string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY))
    $songs=@()
@@ -553,7 +646,7 @@ $run.Add_Click({
    $script:work=Join-Path $env:TEMP ('EditorIA_'+[guid]::NewGuid().ToString('N'))
    New-Item -ItemType Directory -Path $script:work | Out-Null
    $jobfile=Join-Path $script:work 'job.json'
-   @{ffmpeg=$engine;ffprobe=$probe;inputs=$inputs;output=$out.Text.Trim();quality=@('4K','1080p','720p')[$quality.SelectedIndex];musicFolder=$music.Text.Trim();visual=$visual.Checked;cleanVoice=$cleanVoice.Checked} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $jobfile -Encoding UTF8
+   @{ffmpeg=$engine;ffprobe=$probe;inputs=$inputs;output=$out.Text.Trim();quality=@('4K','1080p','720p')[$quality.SelectedIndex];musicFolder=$music.Text.Trim();visual=$visual.Checked;cleanVoice=$cleanVoice.Checked;transcribe=$transcribe.Checked} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $jobfile -Encoding UTF8
    $args='-NoProfile -ExecutionPolicy Bypass -File "'+$PSCommandPath+'" -Worker -JobPath "'+$jobfile+'"'
    $script:proc=Start-Process powershell.exe -ArgumentList $args -PassThru -WindowStyle Hidden
    $script:active=$true;$run.Enabled=$false;$stop.Enabled=$true;$bar.Value=0;$status.Text='Processando...'
