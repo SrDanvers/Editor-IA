@@ -156,6 +156,46 @@ if($Worker){
      }
    }
    if($clips.Count -eq 0){throw 'Nenhum trecho valido encontrado'}
+   # Analise visual opcional: apenas dois quadros de alguns cortes escolhidos.
+   $visionOn=([bool]$j.visual) -and (-not [string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY))
+   $songs=@()
+   if($j.musicFolder -and (Test-Path -LiteralPath ([string]$j.musicFolder) -PathType Container)){
+     $songs=@(Get-ChildItem -LiteralPath ([string]$j.musicFolder) -File -Recurse |
+       Where-Object { @('.mp3','.wav','.m4a','.flac','.ogg') -contains $_.Extension.ToLowerInvariant() } | Sort-Object FullName)
+   }
+   if([bool]$j.visual -and -not $visionOn){ Report 26 'Sem OPENAI_API_KEY: trilhas seguem a escolha local.' }
+   $visionUsed=0
+   $visionMemo=@{}
+   function VisualCategory($cut){
+     if(-not $visionOn -or $visionUsed -ge 8){return 'neutra'}
+     $frameContent=New-Object System.Collections.ArrayList
+     foreach($fraction in @(0.25,0.70)){
+       $position=[double]$cut.start+([double]$cut.length*$fraction)
+       $img=Join-Path $temporary ('quadro_'+$visionUsed+'_'+$fraction.ToString('0.00',[Globalization.CultureInfo]::InvariantCulture)+'.jpg')
+       $prior=$ErrorActionPreference;$ErrorActionPreference='Continue'
+       try{$null= & $j.ffmpeg -hide_banner -loglevel error -nostdin -y -ss (Fmt $position) -i ([string]$cut.path) -frames:v 1 -vf 'scale=448:-2' -q:v 5 $img 2>&1 | Out-String}finally{$ErrorActionPreference=$prior}
+       if(Test-Path -LiteralPath $img){
+         $base64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($img))
+         [void]$frameContent.Add(@{type='input_image';image_url=('data:image/jpeg;base64,'+$base64);detail='low'})
+         Remove-Item -LiteralPath $img -Force -ErrorAction SilentlyContinue
+       }
+     }
+     if($frameContent.Count -eq 0){return 'neutra'}
+     $visionUsed++
+     $payload=@{
+       model='gpt-4.1-mini'
+       max_output_tokens=24
+       input=@(@{role='user';content=@(@{type='input_text';text='Analise somente estas imagens do mesmo trecho de vlog. Escolha UMA categoria de trilha instrumental apropriada: calma, animada, viagem, neutra. Responda apenas com uma dessas quatro palavras, sem explicacao. Nao identifique pessoas.'})+@($frameContent)})
+     } | ConvertTo-Json -Depth 12 -Compress
+     try {
+       $response=Invoke-RestMethod -Uri 'https://api.openai.com/v1/responses' -Method Post -Headers @{Authorization=('Bearer '+$env:OPENAI_API_KEY)} -Body ([Text.Encoding]::UTF8.GetBytes($payload)) -ContentType 'application/json; charset=utf-8' -TimeoutSec 90
+       $raw=(@($response.output | ForEach-Object {$_.content} | Where-Object type -eq 'output_text' | ForEach-Object text) -join ' ').Trim().ToLowerInvariant()
+       if($raw -match '\b(calma|animada|viagem|neutra)\b'){return $Matches[1]}
+     }catch{
+       Add-Content -LiteralPath (Join-Path (Split-Path $JobPath) 'visao_erros.txt') -Value ("Analise visual nao concluida: "+$_.Exception.Message) -Encoding UTF8
+     }
+     return 'neutra'
+   }
    $list=Join-Path $temporary 'concat.txt'
    $records=New-Object System.Collections.Generic.List[string]
    $i=0
@@ -179,6 +219,20 @@ if($Worker){
      if($c.audio){$params+=@('-map','0:a:0')}else{$params+=@('-map','1:a:0')}
      $params+=@('-c:v','libx264','-preset',$preset,'-crf',$crf,'-threads','2','-c:a','aac','-b:a','192k','-ar','44100','-ac','2','-shortest',$piece)
      [void](Execute -ffArgs $params)
+     if($visionOn -and $songs.Count -gt 0){
+       $cat=VisualCategory $c
+       $matched=@($songs | Where-Object { $_.BaseName.ToLowerInvariant() -match ('^'+$cat+'[-_ ]') })
+       if($matched.Count -eq 0){$matched=@($songs | Where-Object { $_.BaseName.ToLowerInvariant() -match '^neutra[-_ ]' })}
+       if($matched.Count -gt 0){
+         $track=$matched[(($i-1) % $matched.Count)].FullName
+         $mix=Join-Path $temporary ('mix_{0:D4}.mp4' -f $i)
+         # Musica selecionada so para este trecho, com diminuicao conforme o audio original.
+         $fx='[1:a]volume=0.16,afade=t=in:st=0:d=1[m];[m][0:a]sidechaincompress=threshold=0.04:ratio=6:attack=40:release=500[d];[0:a][d]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.92[a]'
+         Execute -ffArgs @('-hide_banner','-nostdin','-y','-i',$piece,'-stream_loop','-1','-i',$track,'-filter_complex',$fx,'-map','0:v:0','-map','[a]','-c:v','copy','-c:a','aac','-b:a','192k','-shortest',$mix) | Out-Null
+         Move-Item -LiteralPath $mix -Destination $piece -Force
+         Report ([int](25+69*$i/$clips.Count)) ("Cena $i - "+$cat+": "+[IO.Path]::GetFileName($track))
+       }
+     }
      $records.Add("file '"+$piece.Replace("'","'\''")+"'")
      Report ([int](25+69*$i/$clips.Count)) ("Processando corte $i de "+$clips.Count)
    }
@@ -218,7 +272,7 @@ if($Worker){
    }
    $joined=Join-Path $temporary 'video_montado.mp4'
    Execute -ffArgs @('-hide_banner','-nostdin','-y','-f','concat','-safe','0','-i',$list,'-c','copy','-movflags','+faststart',$joined) | Out-Null
-   if($selectedMusic){
+   if($selectedMusic -and -not $visionOn){
      # Compressao lateral reduz a musica quando o audio original fica forte.
      # Mantem as falas originais e copia o video sem nova codificacao 4K.
      $audioFx='[1:a]volume=0.22,afade=t=in:st=0:d=1.5[m];[m][0:a]sidechaincompress=threshold=0.035:ratio=8:attack=30:release=500[duck];[0:a][duck]amix=inputs=2:duration=first:normalize=0:dropout_transition=1,alimiter=limit=0.92[a]'
@@ -240,8 +294,8 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [Windows.Forms.Application]::EnableVisualStyles()
 $f=New-Object Windows.Forms.Form
-$f.Text='Editor IA 0.3 - Vlogs e Musica Automatica'
-$f.Size=New-Object Drawing.Size(800,750)
+$f.Text='Editor IA 0.4 - Vlogs com Visao Opcional'
+$f.Size=New-Object Drawing.Size(800,810)
 $f.StartPosition='CenterScreen'
 $f.BackColor=[Drawing.Color]::FromArgb(25,25,28)
 $f.ForeColor='White'
@@ -259,7 +313,7 @@ function Field($x,$y,$w){
  $t=New-Object Windows.Forms.TextBox;$t.Location=New-Object Drawing.Point($x,$y);$t.Size=New-Object Drawing.Size($w,26)
  $f.Controls.Add($t);return $t
 }
-$t=Label 'EDITOR IA 0.3' 20 12
+$t=Label 'EDITOR IA 0.4' 20 12
 $t.Font=New-Object Drawing.Font('Segoe UI',18,[Drawing.FontStyle]::Bold)
 $t.ForeColor=[Drawing.Color]::Gold
 [void](Label 'Vlogs: ordem cronologica, cenas longas, fundo desfocado e musica automatica' 20 52)
@@ -335,13 +389,20 @@ $musicBrowse.Add_Click({
 })
 $musicDefault=Join-Path $PSScriptRoot 'Musicas'
 if(Test-Path -LiteralPath $musicDefault -PathType Container){$music.Text=$musicDefault}
-$run=Button 'CRIAR VLOG AUTOMATICAMENTE' 20 547 385
+$visual=New-Object Windows.Forms.CheckBox
+$visual.Text='Analisar imagens dos trechos selecionados (IA online - envia ate 16 quadros)'
+$visual.Location=New-Object Drawing.Point(20,531)
+$visual.Size=New-Object Drawing.Size(720,24)
+$visual.ForeColor=[Drawing.Color]::White
+$visual.Checked=$false
+$f.Controls.Add($visual)
+$run=Button 'CRIAR VLOG AUTOMATICAMENTE' 20 583 385
 $run.BackColor=[Drawing.Color]::Gold;$run.ForeColor='Black'
-$stop=Button 'CANCELAR' 418 547 145;$stop.Enabled=$false
-$folder=Button 'Abrir pasta' 576 547 183
-$bar=New-Object Windows.Forms.ProgressBar;$bar.Location=New-Object Drawing.Point(20,597)
+$stop=Button 'CANCELAR' 418 583 145;$stop.Enabled=$false
+$folder=Button 'Abrir pasta' 576 583 183
+$bar=New-Object Windows.Forms.ProgressBar;$bar.Location=New-Object Drawing.Point(20,633)
 $bar.Size=New-Object Drawing.Size(739,19);$f.Controls.Add($bar)
-$status=Label 'Musicas sao opcionais. Use apenas faixas com licenca apropriada.' 20 632
+$status=Label 'IA visual usa API paga e envia quadros somente quando ativada.' 20 668
 $script:work=$null;$script:proc=$null;$script:active=$false
 $timer=New-Object Windows.Forms.Timer;$timer.Interval=800
 $timer.Add_Tick({
@@ -385,7 +446,7 @@ $run.Add_Click({
    $script:work=Join-Path $env:TEMP ('EditorIA_'+[guid]::NewGuid().ToString('N'))
    New-Item -ItemType Directory -Path $script:work | Out-Null
    $jobfile=Join-Path $script:work 'job.json'
-   @{ffmpeg=$engine;ffprobe=$probe;inputs=$inputs;output=$out.Text.Trim();quality=@('4K','1080p','720p')[$quality.SelectedIndex];musicFolder=$music.Text.Trim()} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $jobfile -Encoding UTF8
+   @{ffmpeg=$engine;ffprobe=$probe;inputs=$inputs;output=$out.Text.Trim();quality=@('4K','1080p','720p')[$quality.SelectedIndex];musicFolder=$music.Text.Trim();visual=$visual.Checked} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $jobfile -Encoding UTF8
    $args='-NoProfile -ExecutionPolicy Bypass -File "'+$PSCommandPath+'" -Worker -JobPath "'+$jobfile+'"'
    $script:proc=Start-Process powershell.exe -ArgumentList $args -PassThru -WindowStyle Hidden
    $script:active=$true;$run.Enabled=$false;$stop.Enabled=$true;$bar.Value=0;$status.Text='Processando...'
