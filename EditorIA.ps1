@@ -247,6 +247,9 @@ if($Worker){
          Report ([int](25+69*$i/$clips.Count)) ("Cena $i - "+$cat+": "+[IO.Path]::GetFileName($track))
        }
      }
+     if(Test-Path -LiteralPath $piece -PathType Leaf){
+       Set-Content -LiteralPath (Join-Path (Split-Path $JobPath) 'completed_clip.txt') -Value $piece -Encoding UTF8
+     }
      $records.Add("file '"+$piece.Replace("'","'\''")+"'")
      Report ([int](25+69*$i/$clips.Count)) ("Processando corte $i de "+$clips.Count)
    }
@@ -452,10 +455,10 @@ function UpdatePreview {
    $stamp=(Get-Item -LiteralPath $path).LastWriteTimeUtc
    if($stamp -le $script:previewStamp){return}
    $bytes=[IO.File]::ReadAllBytes($path)
-   $stream=New-Object IO.MemoryStream(,$bytes)
+   $stream=[IO.MemoryStream]::new($bytes)
    try{
      $img=[Drawing.Image]::FromStream($stream)
-     try{$copy=New-Object Drawing.Bitmap($img)}finally{$img.Dispose()}
+     try{$copy=[Drawing.Bitmap]::new($img)}finally{$img.Dispose()}
    }finally{$stream.Dispose()}
    $oldImage=$preview.Image
    $preview.Image=$copy
@@ -474,17 +477,22 @@ $timer.Add_Tick({
      $bar.Value=[Math]::Max(0,[Math]::Min(100,[int]$v.pct))
      $status.Text=$v.message
      $previewInfo.Text=$v.message
-     $clipsAvailable=@(Get-ChildItem -LiteralPath (Join-Path $script:work 'parts') -Filter 'clip_*.mp4' -File -ErrorAction SilentlyContinue | Sort-Object Name)
-     if($clipsAvailable.Count -gt 0){
-       $latest=$clipsAvailable[-1]
-       if($latest.Length -gt 1024){
-         $script:lastClip=$latest.FullName
+     $completed=Join-Path $script:work 'completed_clip.txt'
+     if(Test-Path -LiteralPath $completed){
+       $last=(Get-Content -LiteralPath $completed -Raw -Encoding UTF8).Trim()
+       if($last -and (Test-Path -LiteralPath $last -PathType Leaf)){
+         $script:lastClip=$last
          $playClip.Enabled=$true
        }
      }
      if($v.state -in @('success','error','cancel')){
        $script:active=$false;$timer.Stop();$run.Enabled=$true;$stop.Enabled=$false
-       if($v.state -eq 'success'){[Windows.Forms.MessageBox]::Show('Video exportado.','Editor IA') | Out-Null}
+       if($v.state -eq 'success'){
+         $playClip.Text='Abrir video final'
+         $script:lastClip=$out.Text.Trim()
+         $playClip.Enabled=$true
+         [Windows.Forms.MessageBox]::Show('Video exportado.','Editor IA') | Out-Null
+       }
      }
    }catch{}
  }
@@ -520,7 +528,7 @@ $run.Add_Click({
    $script:proc=Start-Process powershell.exe -ArgumentList $args -PassThru -WindowStyle Hidden
    $script:active=$true;$run.Enabled=$false;$stop.Enabled=$true;$bar.Value=0;$status.Text='Processando...'
    $script:previewStamp=[datetime]::MinValue
-   $script:lastClip=$null;$playClip.Enabled=$false;$previewInfo.Text='Aguardando a primeira cena...'
+   $script:lastClip=$null;$playClip.Text='Reproduzir trecho concluido';$playClip.Enabled=$false;$previewInfo.Text='Aguardando a primeira cena...'
    if($preview.Image){$preview.Image.Dispose();$preview.Image=$null}
    $timer.Start()
  }catch{[Windows.Forms.MessageBox]::Show($_.Exception.Message,'Editor IA') | Out-Null}
