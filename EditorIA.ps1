@@ -102,7 +102,14 @@ if($Worker){
      if(-not $c.audio){$params+=@('-f','lavfi','-i','anullsrc=channel_layout=stereo:sample_rate=44100')}
      $params+=@('-t',(Fmt $c.length),'-map','0:v:0')
      if($c.audio){$params+=@('-map','0:a:0')}else{$params+=@('-map','1:a:0')}
-     $params+=@('-vf','fps=24,scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p','-c:v','libx264','-preset','veryfast','-crf','27','-threads','2','-c:a','aac','-b:a','96k','-ar','44100','-ac','2','-shortest',$piece)
+     $profile=([string]$j.quality)
+     switch($profile){
+       '1080p' {$w=1920;$h=1080;$crf='20';$preset='veryfast'}
+       '720p'  {$w=1280;$h=720;$crf='23';$preset='veryfast'}
+       default {$w=3840;$h=2160;$crf='18';$preset='ultrafast'}
+     }
+     $filter="fps=30,scale=$($w):$($h):force_original_aspect_ratio=decrease,pad=$($w):$($h):(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p"
+     $params+=@('-vf',$filter,'-c:v','libx264','-preset',$preset,'-crf',$crf,'-threads','2','-c:a','aac','-b:a','192k','-ar','44100','-ac','2','-shortest',$piece)
      [void](Execute -ffArgs $params)
      $records.Add("file '"+$piece.Replace("'","'\''")+"'")
      Report ([int](25+69*$i/$clips.Count)) ("Processando corte $i de "+$clips.Count)
@@ -123,7 +130,7 @@ Add-Type -AssemblyName System.Drawing
 [Windows.Forms.Application]::EnableVisualStyles()
 $f=New-Object Windows.Forms.Form
 $f.Text='Editor IA 0.2 - Vlogs Automaticos'
-$f.Size=New-Object Drawing.Size(800,610)
+$f.Size=New-Object Drawing.Size(800,670)
 $f.StartPosition='CenterScreen'
 $f.BackColor=[Drawing.Color]::FromArgb(25,25,28)
 $f.ForeColor='White'
@@ -181,9 +188,17 @@ $save.Add_Click({
  $d=New-Object Windows.Forms.SaveFileDialog;$d.Filter='MP4|*.mp4';$d.FileName='vlog_automatico.mp4'
  if($d.ShowDialog() -eq 'OK'){$out.Text=$d.FileName}
 })
-[void](Label '3. Caminho do ffmpeg.exe' 20 350)
-$ff=Field 20 380 580
-$browse=Button 'Localizar' 614 378 145
+[void](Label '3. Qualidade de exportacao' 20 347)
+$quality=New-Object Windows.Forms.ComboBox
+$quality.DropDownStyle='DropDownList';$quality.Location=New-Object Drawing.Point(312,347)
+$quality.Size=New-Object Drawing.Size(290,25)
+[void]$quality.Items.Add('4K (3840x2160) - melhor resolucao')
+[void]$quality.Items.Add('1080p (1920x1080)')
+[void]$quality.Items.Add('720p (1280x720)')
+$quality.SelectedIndex=0;$f.Controls.Add($quality)
+[void](Label '4. Caminho do ffmpeg.exe' 20 387)
+$ff=Field 20 417 580
+$browse=Button 'Localizar' 614 415 145
 $browse.Add_Click({
  $d=New-Object Windows.Forms.OpenFileDialog;$d.Filter='ffmpeg.exe|ffmpeg.exe'
  if($d.ShowDialog() -eq 'OK'){$ff.Text=$d.FileName}
@@ -194,13 +209,13 @@ $paths=@(
 )
 foreach($p in $paths){if(Test-Path -LiteralPath $p){$ff.Text=$p;break}}
 if(-not $ff.Text){$c=Get-Command ffmpeg.exe -ErrorAction SilentlyContinue;if($c){$ff.Text=$c.Source}}
-$run=Button 'CRIAR VLOG AUTOMATICAMENTE' 20 432 385
+$run=Button 'CRIAR VLOG AUTOMATICAMENTE' 20 470 385
 $run.BackColor=[Drawing.Color]::Gold;$run.ForeColor='Black'
-$stop=Button 'CANCELAR' 418 432 145;$stop.Enabled=$false
-$folder=Button 'Abrir pasta' 576 432 183
-$bar=New-Object Windows.Forms.ProgressBar;$bar.Location=New-Object Drawing.Point(20,481)
+$stop=Button 'CANCELAR' 418 470 145;$stop.Enabled=$false
+$folder=Button 'Abrir pasta' 576 470 183
+$bar=New-Object Windows.Forms.ProgressBar;$bar.Location=New-Object Drawing.Point(20,519)
 $bar.Size=New-Object Drawing.Size(739,19);$f.Controls.Add($bar)
-$status=Label 'Pronto.' 20 514
+$status=Label 'Pronto. 4K preserva resolucao, mas recodifica e pode ser lento.' 20 553
 $script:work=$null;$script:proc=$null;$script:active=$false
 $timer=New-Object Windows.Forms.Timer;$timer.Interval=800
 $timer.Add_Tick({
@@ -244,7 +259,7 @@ $run.Add_Click({
    $script:work=Join-Path $env:TEMP ('EditorIA_'+[guid]::NewGuid().ToString('N'))
    New-Item -ItemType Directory -Path $script:work | Out-Null
    $jobfile=Join-Path $script:work 'job.json'
-   @{ffmpeg=$engine;ffprobe=$probe;inputs=$inputs;output=$out.Text.Trim()} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $jobfile -Encoding UTF8
+   @{ffmpeg=$engine;ffprobe=$probe;inputs=$inputs;output=$out.Text.Trim();quality=@('4K','1080p','720p')[$quality.SelectedIndex]} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $jobfile -Encoding UTF8
    $args='-NoProfile -ExecutionPolicy Bypass -File "'+$PSCommandPath+'" -Worker -JobPath "'+$jobfile+'"'
    $script:proc=Start-Process powershell.exe -ArgumentList $args -PassThru -WindowStyle Hidden
    $script:active=$true;$run.Enabled=$false;$stop.Enabled=$true;$bar.Value=0;$status.Text='Processando...'
