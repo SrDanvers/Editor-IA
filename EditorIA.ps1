@@ -14,11 +14,11 @@ if($Worker){
  }
  function CheckCancel {if(Test-Path $cancel){throw 'Cancelado pelo usuario'}}
  function Fmt($n){([double]$n).ToString('0.###',[Globalization.CultureInfo]::InvariantCulture)}
- function Execute([string[]]$args){
+ function Execute([string[]]$ffArgs){
    CheckCancel
    $log=Join-Path (Split-Path $JobPath) 'ffmpeg.log'
    $prior=$ErrorActionPreference; $ErrorActionPreference='Continue'
-   try { $lines= & $j.ffmpeg @args 2>&1 | Out-String } finally { $ErrorActionPreference=$prior }
+   try { $lines= & $j.ffmpeg @ffArgs 2>&1 | Out-String } finally { $ErrorActionPreference=$prior }
    $exit=$LASTEXITCODE
    Add-Content -LiteralPath $log -Value $lines -Encoding UTF8
    if($exit -ne 0){
@@ -103,12 +103,12 @@ if($Worker){
      $params+=@('-t',(Fmt $c.length),'-map','0:v:0')
      if($c.audio){$params+=@('-map','0:a:0')}else{$params+=@('-map','1:a:0')}
      $params+=@('-vf','fps=24,scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p','-c:v','libx264','-preset','veryfast','-crf','27','-threads','2','-c:a','aac','-b:a','96k','-ar','44100','-ac','2','-shortest',$piece)
-     [void](Execute $params)
+     [void](Execute -ffArgs $params)
      $records.Add("file '"+$piece.Replace("'","'\''")+"'")
      Report ([int](25+69*$i/$clips.Count)) ("Processando corte $i de "+$clips.Count)
    }
    [IO.File]::WriteAllLines($list,$records,[Text.UTF8Encoding]::new($false))
-   Execute @('-hide_banner','-nostdin','-y','-f','concat','-safe','0','-i',$list,'-c','copy','-movflags','+faststart',[string]$j.output) | Out-Null
+   Execute -ffArgs @('-hide_banner','-nostdin','-y','-f','concat','-safe','0','-i',$list,'-c','copy','-movflags','+faststart',[string]$j.output) | Out-Null
    Report 100 ("Concluido. Video salvo em "+$j.output) 'success'
  } catch {
    if($_.Exception.Message -match 'Cancelado'){Report 0 'Processamento cancelado' 'cancel'}
