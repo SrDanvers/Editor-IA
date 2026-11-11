@@ -415,8 +415,9 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [Windows.Forms.Application]::EnableVisualStyles()
 $f=New-Object Windows.Forms.Form
-$f.Text='Editor IA 0.7 - Cortes Sem Interromper Falas'
-$f.Size=New-Object Drawing.Size(1170,748)
+$f.Text='Editor IA 1.0 Beta - Montagem Completa'
+$f.Size=New-Object Drawing.Size(1170,785)
+$f.AutoScroll=$true
 $f.StartPosition='CenterScreen'
 $f.BackColor=[Drawing.Color]::FromArgb(25,25,28)
 $f.ForeColor='White'
@@ -434,7 +435,7 @@ function Field($x,$y,$w){
  $t=New-Object Windows.Forms.TextBox;$t.Location=New-Object Drawing.Point($x,$y);$t.Size=New-Object Drawing.Size($w,26)
  $f.Controls.Add($t);return $t
 }
-$t=Label 'EDITOR IA 0.7' 20 12
+$t=Label 'EDITOR IA 1.0 BETA' 20 12
 $t.Font=New-Object Drawing.Font('Segoe UI',18,[Drawing.FontStyle]::Bold)
 $t.ForeColor=[Drawing.Color]::Gold
 [void](Label 'Vlogs: ordem cronologica, cenas longas, fundo desfocado e musica automatica' 20 52)
@@ -548,6 +549,20 @@ $cleanVoice.Checked=$true
 $f.Controls.Add($cleanVoice)
 $musicState=Label 'Musicas: escolha uma pasta com MP3s licenciados.' 786 575 345
 $musicState.Size=New-Object Drawing.Size(345,55)
+$transcribe=New-Object Windows.Forms.CheckBox
+$transcribe.Text='Cortes por transcricao de voz (API paga; envia audio)'
+$transcribe.Location=New-Object Drawing.Point(786,635)
+$transcribe.Size=New-Object Drawing.Size(355,28)
+$transcribe.ForeColor=[Drawing.Color]::White
+$transcribe.Checked=$false
+$f.Controls.Add($transcribe)
+$openPlan=Button 'Ver plano dos cortes (CSV)' 786 670 345
+$openPlan.Add_Click({
+ if(-not $script:work){[Windows.Forms.MessageBox]::Show('Inicie uma montagem primeiro.','Editor IA') | Out-Null;return}
+ $plan=Join-Path $script:work 'plano_cortes.csv'
+ if(Test-Path -LiteralPath $plan -PathType Leaf){Start-Process -FilePath $plan}
+ else{[Windows.Forms.MessageBox]::Show('O plano de cortes ainda esta sendo preparado.','Editor IA') | Out-Null}
+})
 $playClip=Button 'Reproduzir trecho concluido' 786 486 345
 $playClip.Enabled=$false
 $script:lastClip=$null
@@ -624,6 +639,12 @@ $run.Add_Click({
    if(-not $out.Text.Trim().ToLowerInvariant().EndsWith('.mp4')){throw 'Selecione um arquivo MP4 de saida'}
    if(Test-Path $out.Text){throw 'O arquivo de saida ja existe; escolha outro nome'}
    if(-not(Test-Path (Split-Path $out.Text))){throw 'A pasta de saida nao existe'}
+   if($transcribe.Checked -and -not $env:OPENAI_API_KEY){
+     throw 'Transcricao requer OPENAI_API_KEY configurada. Desmarque a opcao ou configure a chave sem coloca-la no GitHub.'
+   }
+   if($visual.Checked -and -not $env:OPENAI_API_KEY){
+     throw 'Analise visual requer OPENAI_API_KEY. Desmarque a opcao ou configure a chave.'
+   }
    $inputs=@()
    foreach($v in $files.Items){
      $path=[string]$v
