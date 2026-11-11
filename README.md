@@ -1,4 +1,4 @@
-# Editor IA 0.3 — Vlogs e musica automatica
+# Editor IA 0.4 — Analise visual por trechos (opcional)
 
 Editor local para Windows 10 (64 bits), PowerShell 5.1 e FFmpeg. Interface escura, importacao de multiplos videos e criacao automatica de montagem de vlog.
 
@@ -55,3 +55,17 @@ Este repositorio contem uma versao compacta, de um unico script, publicada para 
 Fontes para encontrar trilhas licenciadas: [Mixkit](https://mixkit.co/free-stock-music/) e [Pixabay Music](https://pixabay.com/music/). Confira as condicoes de cada faixa, as plataformas permitidas e eventuais creditos; **royalty-free nao significa dominio publico nem garantia contra reivindicacoes**. Musicas nao devem ser redistribuidas separadamente em nosso projeto.
 
 A escolha de trilha nao e uma analise semantica de imagens e nao garante combinacao perfeita. A exportacao desta versao ainda depende de validacao no Windows 10.
+
+## Visao de IA apenas dos cortes escolhidos (0.4)
+
+- Depois de escolher os trechos, o programa extrai **duas imagens pequenas (448 px de largura)** por trecho, em aproximadamente 25% e 70% da duracao de cada corte.
+- Analisa **no maximo 8 trechos / 16 imagens** por montagem. Nao envia o video inteiro.
+- Quando ativada a caixa **Analisar imagens dos trechos selecionados**, envia essas imagens para a **OpenAI API**, que interpreta o ambiente e retorna uma categoria simples: `calma`, `animada`, `viagem` ou `neutra`.
+- Escolhe uma musica licenciada da biblioteca para cada trecho conforme o prefixo do arquivo (`calma-`, `animada-`, `viagem-`, `neutra-`) e reduz o volume sob o audio original. Se nao houver faixa compativel, pode ficar sem musica.
+- Sem a caixa ativada, o editor usa a selecao musical local anterior. **Nao faz upload de imagens sem permissao.**
+- Exige **internet, chave OpenAI API com credito e o ambiente `OPENAI_API_KEY` configurado no Windows**. A assinatura do ChatGPT nao inclui uso gratuito de API. **Nunca publique a chave no GitHub nem a envie por mensagem.**
+- Se o sistema de visao falhar, a classificacao reverte para `neutra`; o aplicativo guarda apenas logs de diagnostico em pasta temporaria.
+- Visao e uma classificacao aproximada com poucos quadros, nao interpreta o video quadro a quadro. Cenas podem ser classificadas erroneamente.
+- **Os videos originais ficam no computador. Somente as imagens amostradas sao enviadas ao servico de IA.** Evite ativar se houver material sensivel ou pessoas sem consentimento apropriado.
+
+Para configurar a chave, crie-a no portal OpenAI Platform usando o fluxo de seguranca. Salve em uma variavel de ambiente de usuario `OPENAI_API_KEY` do Windows e **abra uma nova janela do PowerShell** antes de executar o editor. A chave nao e inclusa no repositorio. A alteracao foi publicada, mas **a versao 0.4 ainda precisa ser testada no Windows**.
