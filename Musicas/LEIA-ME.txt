@@ -1,0 +1,22 @@
+EDITOR IA 0.3 - BIBLIOTECA DE MUSICAS
+
+Coloque nesta pasta apenas arquivos de musica que voce tem licenca para usar em seus videos.
+Formatos: MP3, WAV, M4A, FLAC, OGG.
+
+Para ajudar a escolha automatica, renomeie as musicas usando estes prefixos:
+  calma-por-do-sol.mp3
+  animada-dia-de-piscina.mp3
+  viagem-passeio.mp3
+  neutra-instrumental.mp3
+
+O editor usa uma heuristica simples: observa o volume dos primeiros segundos das gravacoes
+e palavras no nome do arquivo para escolher uma categoria. Nao identifica imagens,
+humor, nem a letra das musicas; o resultado pode precisar de ajuste manual.
+
+Sugestoes de fontes:
+- https://mixkit.co/free-stock-music/
+- https://pixabay.com/music/
+
+Confira sempre a licenca individual e eventuais requisitos de credito.
+Nao e possivel garantir ausencia de reclamacoes automaticas de direitos autorais.
+As musicas nao sao incluidas neste projeto nem redistribuidas pelo GitHub.
