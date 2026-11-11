@@ -43,58 +43,109 @@ if($Worker){
      $sum+=$duration
    }
    if($sum -le 0){throw 'Nao existem videos validos'}
-   $goal=[Math]::Min($sum,[Math]::Min(240,[Math]::Max(12,$sum*0.35)))
+   # A montagem prioriza diversidade: primeiro um trecho longo por arquivo,
+   # depois (apenas se houver espaco) uma segunda passagem por arquivos extensos.
+   $uniqueInfo=New-Object System.Collections.ArrayList
+   $seen=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+   foreach($v in $info){
+     if($seen.Add([IO.Path]::GetFullPath([string]$v.path))){[void]$uniqueInfo.Add($v)}
+   }
+   $info=@($uniqueInfo)
+   $sum=0.0;foreach($v in $info){$sum+=[double]$v.duration}
+   $goal=[Math]::Min($sum,[Math]::Min(600,[Math]::Max(240,14*$info.Count)))
    $clips=New-Object System.Collections.ArrayList
+   $candidates=New-Object System.Collections.ArrayList
    $index=0
    foreach($v in $info){
+     CheckCancel
      $index++
-     Report ([int](5+20*$index/$info.Count)) ("Detectando pausas em "+[IO.Path]::GetFileName($v.path))
+     Report ([int](5+20*$index/$info.Count)) ("Analisando pausas de "+[IO.Path]::GetFileName($v.path))
      $regions=New-Object System.Collections.ArrayList
      if($v.audio){
-       $prior=$ErrorActionPreference; $ErrorActionPreference='Continue'
-       try { $report= & $j.ffmpeg -hide_banner -nostdin -i $v.path -vn -af 'silencedetect=noise=-34dB:d=0.65' -f null NUL 2>&1 | Out-String } finally { $ErrorActionPreference=$prior }
-       $begin=0.0
-       $silenceStart=$null
+       $prior=$ErrorActionPreference;$ErrorActionPreference='Continue'
+       try { $report= & $j.ffmpeg -hide_banner -nostdin -i $v.path -vn -af 'silencedetect=noise=-34dB:d=1.5' -f null NUL 2>&1 | Out-String } finally { $ErrorActionPreference=$prior }
+       $beginSpeech=0.0;$silenceStart=$null
        foreach($line in ($report -split '\r?\n')){
-         if($line -match 'silence_start:\s*([0-9.]+)'){$silenceStart=[double]::Parse($Matches[1],[Globalization.CultureInfo]::InvariantCulture)}
+         if($line -match 'silence_start:\s*([0-9.]+)'){
+           $silenceStart=[double]::Parse($Matches[1],[Globalization.CultureInfo]::InvariantCulture)
+         }
          if($line -match 'silence_end:\s*([0-9.]+)' -and $null -ne $silenceStart){
-           if($silenceStart-$begin -ge 2){[void]$regions.Add(@{start=$begin;length=$silenceStart-$begin})}
-           $begin=[double]::Parse($Matches[1],[Globalization.CultureInfo]::InvariantCulture)
+           $endSpeech=[Math]::Min([double]$v.duration,$silenceStart)
+           if($endSpeech-$beginSpeech -gt 0){[void]$regions.Add(@{start=$beginSpeech;end=$endSpeech})}
+           $beginSpeech=[double]::Parse($Matches[1],[Globalization.CultureInfo]::InvariantCulture)
            $silenceStart=$null
          }
        }
-       if($null -ne $silenceStart){
-         if($silenceStart-$begin -ge 2){[void]$regions.Add(@{start=$begin;length=$silenceStart-$begin})}
-       } elseif($v.duration-$begin -ge 2){[void]$regions.Add(@{start=$begin;length=$v.duration-$begin})}
+       if($null -ne $silenceStart){$endSpeech=[Math]::Min([double]$v.duration,$silenceStart)}
+       else{$endSpeech=[double]$v.duration}
+       if($endSpeech-$beginSpeech -gt 0){[void]$regions.Add(@{start=$beginSpeech;end=$endSpeech})}
      }
-     if($regions.Count -eq 0){[void]$regions.Add(@{start=0.0;length=$v.duration})}
-     $candidate=New-Object System.Collections.ArrayList
-     foreach($r in $regions){
-       $s=[double]$r.start
-       $remaining=[double]$r.length
-       while($remaining -ge 1.5){
-         $len=[Math]::Min(16,$remaining)
-         [void]$candidate.Add(@{start=$s;length=$len})
-         $s+=$len
-         $remaining-=$len
+     if($regions.Count -eq 0){[void]$regions.Add(@{start=0.0;end=[double]$v.duration})}
+     # Juntar pausas curtas para nao interromper frases.
+     $merged=New-Object System.Collections.ArrayList
+     foreach($r in @($regions | Sort-Object start)){
+       if($merged.Count -gt 0 -and ([double]$r.start-[double]$merged[$merged.Count-1].end) -le 3.0){
+         $merged[$merged.Count-1].end=[Math]::Max([double]$merged[$merged.Count-1].end,[double]$r.end)
+       }else{[void]$merged.Add(@{start=[double]$r.start;end=[double]$r.end})}
+     }
+     $options=New-Object System.Collections.ArrayList
+     foreach($r in $merged){
+       $span=[double]$r.end-[double]$r.start
+       if($span -lt 8){continue}
+       # 25 a 40 segundos, mantendo varios segundos de folga entre trechos.
+       $cursor=[double]$r.start
+       while($cursor -lt [double]$r.end){
+         $available=[double]$r.end-$cursor
+         if($available -lt 12){break}
+         $length=[Math]::Min(40,$available)
+         [void]$options.Add(@{start=$cursor;length=$length})
+         $cursor+=$length+10
        }
      }
-     $portion=$goal*$v.duration/$sum
-     $used=0.0
-     foreach($c in @($candidate | Sort-Object -Property length -Descending)){
-       if($used -ge $portion){break}
-       $length=[Math]::Min([double]$c.length,$portion-$used)
-       if($length -ge 1.5){
-         [void]$clips.Add(@{path=$v.path;start=$c.start;length=$length;audio=$v.audio;order=$index})
-         $used+=$length
+     if($options.Count -eq 0){
+       # Se nao houver fala longa, usar um trecho mais continuo do arquivo.
+       [void]$options.Add(@{start=0.0;length=[Math]::Min(40,[double]$v.duration)})
+     }
+     # Preferir uma cena da metade do arquivo, evitando selecionar sempre o inicio.
+     $first=@($options | Sort-Object @{Expression={[Math]::Abs(($_.start+$_.length/2)-([double]$v.duration/2))}})[0]
+     [void]$candidates.Add(@{path=$v.path;duration=$v.duration;audio=$v.audio;order=$index;options=@($options);first=$first})
+   }
+   # Primeiro: distribuicao equilibrada, uma cena por video, sem repeticoes.
+   $remaining=$goal
+   $firstQuota=[Math]::Min(40,[Math]::Max(12,[Math]::Floor($goal/[Math]::Max(1,$candidates.Count))))
+   foreach($entry in $candidates){
+     if($remaining -lt 2){break}
+     $take=[Math]::Min([double]$entry.first.length,[Math]::Min($firstQuota,$remaining))
+     if($take -ge 2){
+       [void]$clips.Add(@{path=$entry.path;start=$entry.first.start;length=$take;audio=$entry.audio;order=$entry.order;pass=1})
+       $remaining-=$take
+     }
+   }
+   # Segunda passagem somente quando o total de arquivos e pequeno,
+   # escolhendo um intervalo realmente separado do primeiro.
+   if($candidates.Count -le 6 -and $remaining -ge 12){
+     foreach($entry in $candidates){
+       if($remaining -lt 12){break}
+       $chosen=$null
+       foreach($opt in @($entry.options | Sort-Object start)){
+         $a=[double]$opt.start;$b=$a+[double]$opt.length
+         $f=[double]$entry.first.start;$g=$f+[double]$entry.first.length
+         if(($b -le ($f-8)) -or ($a -ge ($g+8))){$chosen=$opt;break}
+       }
+       if($null -ne $chosen){
+         $take=[Math]::Min([double]$chosen.length,[Math]::Min(40,$remaining))
+         if($take -ge 12){
+           [void]$clips.Add(@{path=$entry.path;start=$chosen.start;length=$take;audio=$entry.audio;order=$entry.order;pass=2})
+           $remaining-=$take
+         }
        }
      }
    }
-   if($clips.Count -eq 0){throw 'Nenhum trecho encontrado'}
+   if($clips.Count -eq 0){throw 'Nenhum trecho valido encontrado'}
    $list=Join-Path $temporary 'concat.txt'
    $records=New-Object System.Collections.Generic.List[string]
    $i=0
-   foreach($c in @($clips | Sort-Object order,start)){
+   foreach($c in @($clips | Sort-Object pass,order,start)){
      CheckCancel
      $i++
      $piece=Join-Path $temporary ('clip_{0:D4}.mp4' -f $i)
@@ -151,7 +202,7 @@ function Field($x,$y,$w){
 $t=Label 'EDITOR IA 0.2' 20 12
 $t.Font=New-Object Drawing.Font('Segoe UI',18,[Drawing.FontStyle]::Bold)
 $t.ForeColor=[Drawing.Color]::Gold
-[void](Label 'Vlogs: selecao automatica por pausas no audio e montagem em 720p' 20 52)
+[void](Label 'Vlogs: cenas longas, sem repetir trechos, com saida em ate 4K' 20 52)
 [void](Label '1. Videos para analisar' 20 90)
 $files=New-Object Windows.Forms.ListBox
 $files.Location=New-Object Drawing.Point(20,118);$files.Size=New-Object Drawing.Size(580,150)
