@@ -1,4 +1,4 @@
-# Editor IA 0.2 — Vlogs automaticos
+# Editor IA 0.3 — Vlogs e musica automatica
 
 Editor local para Windows 10 (64 bits), PowerShell 5.1 e FFmpeg. Interface escura, importacao de multiplos videos e criacao automatica de montagem de vlog.
 
@@ -43,3 +43,15 @@ Editor local para Windows 10 (64 bits), PowerShell 5.1 e FFmpeg. Interface escur
 - Para evitar sobrescrever arquivos, escolha um nome de saida novo.
 
 Este repositorio contem uma versao compacta, de um unico script, publicada para facilitar o download via GitHub. A versao anterior 0.1 permanece separada.
+
+## Musica automatica (versao 0.3)
+
+1. Baixe musicas que tenham licenca adequada para seu uso em videos; as faixas **nao estao inclusas** no projeto.
+2. Guarde os arquivos MP3/WAV/M4A/FLAC/OGG na pasta `Musicas` ao lado do `EditorIA.ps1`, ou selecione outra pasta na interface.
+3. Para facilitar a selecao automatica, use prefixos no nome do arquivo, como `calma-`, `animada-`, `viagem-`, `neutra-`.
+4. Ao montar o vlog, o Editor IA seleciona uma faixa por heuristica (volume do audio e palavras nos nomes), repete ate o final do video, e reduz a musica em momentos de audio original forte para manter as falas audiveis.
+5. Se a biblioteca estiver vazia, o video sai sem musica.
+
+Fontes para encontrar trilhas licenciadas: [Mixkit](https://mixkit.co/free-stock-music/) e [Pixabay Music](https://pixabay.com/music/). Confira as condicoes de cada faixa, as plataformas permitidas e eventuais creditos; **royalty-free nao significa dominio publico nem garantia contra reivindicacoes**. Musicas nao devem ser redistribuidas separadamente em nosso projeto.
+
+A escolha de trilha nao e uma analise semantica de imagens e nao garante combinacao perfeita. A exportacao desta versao ainda depende de validacao no Windows 10.
