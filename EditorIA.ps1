@@ -17,7 +17,8 @@ if($Worker){
  function Execute([string[]]$args){
    CheckCancel
    $log=Join-Path (Split-Path $JobPath) 'ffmpeg.log'
-   $lines= & $j.ffmpeg @args 2>&1 | Out-String
+   $prior=$ErrorActionPreference; $ErrorActionPreference='Continue'
+   try { $lines= & $j.ffmpeg @args 2>&1 | Out-String } finally { $ErrorActionPreference=$prior }
    $exit=$LASTEXITCODE
    Add-Content -LiteralPath $log -Value $lines -Encoding UTF8
    if($exit -ne 0){throw "FFmpeg terminou com codigo $exit. Veja ffmpeg.log"}
@@ -47,7 +48,8 @@ if($Worker){
      Report ([int](5+20*$index/$info.Count)) ("Detectando pausas em "+[IO.Path]::GetFileName($v.path))
      $regions=New-Object System.Collections.ArrayList
      if($v.audio){
-       $report= & $j.ffmpeg -hide_banner -nostdin -i $v.path -vn -af 'silencedetect=noise=-34dB:d=0.65' -f null NUL 2>&1 | Out-String
+       $prior=$ErrorActionPreference; $ErrorActionPreference='Continue'
+       try { $report= & $j.ffmpeg -hide_banner -nostdin -i $v.path -vn -af 'silencedetect=noise=-34dB:d=0.65' -f null NUL 2>&1 | Out-String } finally { $ErrorActionPreference=$prior }
        $begin=0.0
        $silenceStart=$null
        foreach($line in ($report -split '\r?\n')){
