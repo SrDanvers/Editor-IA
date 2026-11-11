@@ -1,4 +1,4 @@
-# Editor IA 0.6 — Voz limpa e trilha musical
+# Editor IA 0.7 — Cortes mais precisos e fala preservada
 
 Editor local para Windows 10 (64 bits), PowerShell 5.1 e FFmpeg. Interface escura, importacao de multiplos videos e criacao automatica de montagem de vlog.
 
@@ -90,3 +90,15 @@ Para configurar a chave, crie-a no portal OpenAI Platform usando o fluxo de segu
 - Se a biblioteca estiver vazia, o programa mostra quantas musicas encontrou e pergunta se deseja exportar mesmo assim. **O editor nao baixa musicas automaticamente**; adicione arquivos MP3/WAV/M4A/FLAC/OGG licenciados.
 - Antes de publicar qualquer video, escute o resultado com fones. A atualizacao foi publicada, mas ainda precisa ser testada no Windows 10 do usuario.
 
+
+## Cortes sem interromper falas (0.7)
+
+- Retirado o corte fixo de 40 segundos, que interrompia frases no meio.
+- As escolhas passam a considerar blocos entre pausas longas do audio, conservando uma margem aproximada de 0,45 segundo antes e depois.
+- Se o programa nao detectar pausas confiaveis, prefere manter o trecho inteiro em vez de cortar arbitrariamente a pessoa falando.
+- A duracao automatica passa a ser **alvo flexivel**, podendo ultrapassar o limite de 10 minutos para respeitar falas inteiras. Um bloco muito longo pode deixar o resultado extenso.
+- Mantem ordem cronologica; tenta um trecho completo por video, e um segundo apenas se couber sem sobreposicao.
+- **Limite tecnico:** detectar silêncios nao equivale a reconhecer frases completas. Ventos, musica, barulho ou pausas no meio de uma frase podem confundir o detector. Para maior precisao sem perder nenhuma fala, a proxima evolucao e usar transcricao com timestamps e revisar os limites antes da exportacao.
+- Antes de editar material importante, teste com dois videos curtos e escute a uniao entre os cortes.
+
+A versao 0.7 esta publicada, mas ainda nao foi validada no computador Windows do usuario.
