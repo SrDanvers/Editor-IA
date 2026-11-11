@@ -239,14 +239,19 @@ $save.Add_Click({
  $d=New-Object Windows.Forms.SaveFileDialog;$d.Filter='MP4|*.mp4';$d.FileName='vlog_automatico.mp4'
  if($d.ShowDialog() -eq 'OK'){$out.Text=$d.FileName}
 })
-[void](Label '3. Qualidade de exportacao' 20 347)
+[void](Label '3. Qualidade de exportacao' 20 347 270)
 $quality=New-Object Windows.Forms.ComboBox
 $quality.DropDownStyle='DropDownList';$quality.Location=New-Object Drawing.Point(312,347)
-$quality.Size=New-Object Drawing.Size(290,25)
+$quality.Size=New-Object Drawing.Size(290,30)
+$quality.BackColor=[Drawing.Color]::White
+$quality.ForeColor=[Drawing.Color]::Black
+$quality.FlatStyle='Standard'
+$quality.Visible=$true
 [void]$quality.Items.Add('4K (3840x2160) - melhor resolucao')
 [void]$quality.Items.Add('1080p (1920x1080)')
 [void]$quality.Items.Add('720p (1280x720)')
 $quality.SelectedIndex=0;$f.Controls.Add($quality)
+$quality.BringToFront()
 [void](Label '4. Caminho do ffmpeg.exe' 20 387)
 $ff=Field 20 417 580
 $browse=Button 'Localizar' 614 415 145
