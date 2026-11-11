@@ -14,6 +14,20 @@ if($Worker){
  }
  function CheckCancel {if(Test-Path $cancel){throw 'Cancelado pelo usuario'}}
  function Fmt($n){([double]$n).ToString('0.###',[Globalization.CultureInfo]::InvariantCulture)}
+ function CaptureDate([string]$path,$probeData){
+   $name=[IO.Path]::GetFileNameWithoutExtension($path)
+   # Nomes de camera, por exemplo VID_20261105_093700_180.mp4
+   if($name -match '(?<!\d)(20\d{2})(0[1-9]|1[0-2])([0-2]\d|3[01])[_ -]?([01]\d|2[0-3])([0-5]\d)([0-5]\d)(?!\d)'){
+     $stamp=$Matches[1]+$Matches[2]+$Matches[3]+$Matches[4]+$Matches[5]+$Matches[6]
+     $date=[DateTime]::MinValue
+     if([DateTime]::TryParseExact($stamp,'yyyyMMddHHmmss',[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::None,[ref]$date)){return $date}
+   }
+   try{
+     $created=$probeData.format.tags.creation_time
+     if($created){return [DateTimeOffset]::Parse([string]$created,[Globalization.CultureInfo]::InvariantCulture).LocalDateTime}
+   }catch{}
+   return [IO.File]::GetLastWriteTime($path)
+ }
  function Execute([string[]]$ffArgs){
    CheckCancel
    $log=Join-Path (Split-Path $JobPath) 'ffmpeg.log'
@@ -33,13 +47,13 @@ if($Worker){
    $sum=0.0
    foreach($path in $j.inputs){
      CheckCancel
-     $raw= & $j.ffprobe -v error -show_entries 'format=duration:stream=codec_type' -of json $path | Out-String
+     $raw= & $j.ffprobe -v error -show_entries 'format=duration:format_tags=creation_time:stream=codec_type' -of json $path | Out-String
      if($LASTEXITCODE -ne 0){throw "Nao foi possivel analisar $path"}
      $p=$raw | ConvertFrom-Json
      $duration=[double]::Parse([string]$p.format.duration,[Globalization.CultureInfo]::InvariantCulture)
      if($duration -le 0){continue}
      $hasAudio=(@($p.streams | Where-Object codec_type -eq 'audio').Count -gt 0)
-     $info+=@{path=$path;duration=$duration;audio=$hasAudio}
+     $info+=@{path=$path;duration=$duration;audio=$hasAudio;capture=(CaptureDate $path $p)}
      $sum+=$duration
    }
    if($sum -le 0){throw 'Nao existem videos validos'}
@@ -50,7 +64,7 @@ if($Worker){
    foreach($v in $info){
      if($seen.Add([IO.Path]::GetFullPath([string]$v.path))){[void]$uniqueInfo.Add($v)}
    }
-   $info=@($uniqueInfo)
+   $info=@($uniqueInfo | Sort-Object capture,path)
    $sum=0.0;foreach($v in $info){$sum+=[double]$v.duration}
    $goal=[Math]::Min($sum,[Math]::Min(600,[Math]::Max(240,14*$info.Count)))
    $clips=New-Object System.Collections.ArrayList
@@ -145,7 +159,7 @@ if($Worker){
    $list=Join-Path $temporary 'concat.txt'
    $records=New-Object System.Collections.Generic.List[string]
    $i=0
-   foreach($c in @($clips | Sort-Object pass,order,start)){
+   foreach($c in @($clips | Sort-Object order,start)){
      CheckCancel
      $i++
      $piece=Join-Path $temporary ('clip_{0:D4}.mp4' -f $i)
@@ -202,7 +216,7 @@ function Field($x,$y,$w){
 $t=Label 'EDITOR IA 0.2' 20 12
 $t.Font=New-Object Drawing.Font('Segoe UI',18,[Drawing.FontStyle]::Bold)
 $t.ForeColor=[Drawing.Color]::Gold
-[void](Label 'Vlogs: cenas longas, sem repetir trechos, com saida em ate 4K' 20 52)
+[void](Label 'Vlogs: ordem de gravacao (data/hora), cenas longas, ate 4K' 20 52)
 [void](Label '1. Videos para analisar' 20 90)
 $files=New-Object Windows.Forms.ListBox
 $files.Location=New-Object Drawing.Point(20,118);$files.Size=New-Object Drawing.Size(580,150)
