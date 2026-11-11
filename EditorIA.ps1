@@ -163,6 +163,11 @@ if($Worker){
      $songs=@(Get-ChildItem -LiteralPath ([string]$j.musicFolder) -File -Recurse |
        Where-Object { @('.mp3','.wav','.m4a','.flac','.ogg') -contains $_.Extension.ToLowerInvariant() } | Sort-Object FullName)
    }
+   if($songs.Count -eq 0){
+     Report 24 'Sem musicas na biblioteca: exportacao tera somente voz/audio original.'
+   }else{
+     Report 24 ("Biblioteca encontrada: "+$songs.Count+" musica(s) disponivel(is).")
+   }
    if([bool]$j.visual -and -not $visionOn){ Report 26 'Sem OPENAI_API_KEY: trilhas seguem a escolha local.' }
    $script:visionUsed=0
    $visionMemo=@{}
@@ -231,17 +236,25 @@ if($Worker){
      $filter="[0:v]split=2[bgsrc][fgsrc];[bgsrc]scale=320:180:force_original_aspect_ratio=increase,crop=320:180,boxblur=12:1,scale=$($w):$($h),setsar=1[bg];[fgsrc]scale=$($w):$($h):force_original_aspect_ratio=decrease,setsar=1[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p,fps=30[v]"
      $params+=@('-filter_complex',$filter,'-map','[v]')
      if($c.audio){$params+=@('-map','0:a:0')}else{$params+=@('-map','1:a:0')}
+     if([bool]$j.cleanVoice){
+       # Reduz vento (frequencias graves), ruido constante e equilibra a voz.
+       # Nao elimina vento forte por completo.
+       $voiceFilter='highpass=f=150,lowpass=f=7500,afftdn=nf=-25,acompressor=threshold=0.10:ratio=2.7:attack=20:release=220:makeup=1.5,alimiter=limit=0.95'
+       $params+=@('-af',$voiceFilter)
+     }
      $params+=@('-c:v','libx264','-preset',$preset,'-crf',$crf,'-threads','2','-c:a','aac','-b:a','192k','-ar','44100','-ac','2','-shortest',$piece)
      [void](Execute -ffArgs $params)
      if($visionOn -and $songs.Count -gt 0){
        $cat=VisualCategory $c
        $matched=@($songs | Where-Object { $_.BaseName.ToLowerInvariant() -match ('^'+$cat+'[-_ ]') })
        if($matched.Count -eq 0){$matched=@($songs | Where-Object { $_.BaseName.ToLowerInvariant() -match '^neutra[-_ ]' })}
+       if($matched.Count -eq 0){$matched=$songs}
        if($matched.Count -gt 0){
          $track=$matched[(($i-1) % $matched.Count)].FullName
          $mix=Join-Path $temporary ('mix_{0:D4}.mp4' -f $i)
          # Musica selecionada so para este trecho, com diminuicao conforme o audio original.
-         $fx='[1:a]volume=0.16,afade=t=in:st=0:d=1[m];[m][0:a]sidechaincompress=threshold=0.04:ratio=6:attack=40:release=500[d];[0:a][d]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.92[a]'
+         # Voz sempre principal, musica a 9% em nivel linear.
+         $fx='[1:a]volume=0.09,afade=t=in:st=0:d=1[m];[0:a][m]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.94[a]'
          Execute -ffArgs @('-hide_banner','-nostdin','-y','-i',$piece,'-stream_loop','-1','-i',$track,'-filter_complex',$fx,'-map','0:v:0','-map','[a]','-c:v','copy','-c:a','aac','-b:a','192k','-shortest',$mix) | Out-Null
          Move-Item -LiteralPath $mix -Destination $piece -Force
          Report ([int](25+69*$i/$clips.Count)) ("Cena $i - "+$cat+": "+[IO.Path]::GetFileName($track))
@@ -292,7 +305,7 @@ if($Worker){
    if($selectedMusic -and -not $visionOn){
      # Compressao lateral reduz a musica quando o audio original fica forte.
      # Mantem as falas originais e copia o video sem nova codificacao 4K.
-     $audioFx='[1:a]volume=0.22,afade=t=in:st=0:d=1.5[m];[m][0:a]sidechaincompress=threshold=0.035:ratio=8:attack=30:release=500[duck];[0:a][duck]amix=inputs=2:duration=first:normalize=0:dropout_transition=1,alimiter=limit=0.92[a]'
+     $audioFx='[1:a]volume=0.09,afade=t=in:st=0:d=1.5[m];[0:a][m]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.94[a]'
      Execute -ffArgs @('-hide_banner','-nostdin','-y','-i',$joined,'-stream_loop','-1','-i',$selectedMusic,'-filter_complex',$audioFx,'-map','0:v:0','-map','[a]','-c:v','copy','-c:a','aac','-b:a','192k','-movflags','+faststart','-shortest',[string]$j.output) | Out-Null
    } else {
      Move-Item -LiteralPath $joined -Destination ([string]$j.output) -ErrorAction Stop
@@ -311,7 +324,7 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [Windows.Forms.Application]::EnableVisualStyles()
 $f=New-Object Windows.Forms.Form
-$f.Text='Editor IA 0.5 - Previa da Edicao'
+$f.Text='Editor IA 0.6 - Voz Limpa e Musica'
 $f.Size=New-Object Drawing.Size(1170,748)
 $f.StartPosition='CenterScreen'
 $f.BackColor=[Drawing.Color]::FromArgb(25,25,28)
@@ -330,7 +343,7 @@ function Field($x,$y,$w){
  $t=New-Object Windows.Forms.TextBox;$t.Location=New-Object Drawing.Point($x,$y);$t.Size=New-Object Drawing.Size($w,26)
  $f.Controls.Add($t);return $t
 }
-$t=Label 'EDITOR IA 0.5' 20 12
+$t=Label 'EDITOR IA 0.6' 20 12
 $t.Font=New-Object Drawing.Font('Segoe UI',18,[Drawing.FontStyle]::Bold)
 $t.ForeColor=[Drawing.Color]::Gold
 [void](Label 'Vlogs: ordem cronologica, cenas longas, fundo desfocado e musica automatica' 20 52)
@@ -435,6 +448,15 @@ $previewInfo.AutoEllipsis=$true
 $previewInfo.Size=New-Object Drawing.Size(345,48)
 $previewHelp=Label 'Imagem do trecho atual, nao video ao vivo. Clique abaixo para reproduzir um corte processado.' 786 411 350
 $previewHelp.Size=New-Object Drawing.Size(345,70)
+$cleanVoice=New-Object Windows.Forms.CheckBox
+$cleanVoice.Text='Reduzir vento e priorizar voz'
+$cleanVoice.Location=New-Object Drawing.Point(786,535)
+$cleanVoice.Size=New-Object Drawing.Size(345,30)
+$cleanVoice.ForeColor=[Drawing.Color]::White
+$cleanVoice.Checked=$true
+$f.Controls.Add($cleanVoice)
+$musicState=Label 'Musicas: escolha uma pasta com MP3s licenciados.' 786 575 345
+$musicState.Size=New-Object Drawing.Size(345,55)
 $playClip=Button 'Reproduzir trecho concluido' 786 486 345
 $playClip.Enabled=$false
 $script:lastClip=$null
@@ -520,10 +542,20 @@ $run.Add_Click({
      if(-not(Test-Path -LiteralPath $path -PathType Leaf)){throw ("Arquivo nao encontrado: "+$path)}
      $inputs+=$path
    }
+   $musicFiles=@()
+   if($music.Text.Trim() -and (Test-Path -LiteralPath $music.Text.Trim() -PathType Container)){
+     $musicFiles=@(Get-ChildItem -LiteralPath $music.Text.Trim() -Recurse -File -ErrorAction SilentlyContinue |
+       Where-Object { @('.mp3','.wav','.m4a','.flac','.ogg') -contains $_.Extension.ToLowerInvariant() })
+   }
+   $musicState.Text=("Musicas encontradas: "+$musicFiles.Count)
+   if($musicFiles.Count -eq 0){
+     $choice=[Windows.Forms.MessageBox]::Show('Nenhuma musica encontrada. O vlog sera exportado sem trilha musical. Continuar?','Editor IA',[Windows.Forms.MessageBoxButtons]::YesNo,[Windows.Forms.MessageBoxIcon]::Information)
+     if($choice -ne [Windows.Forms.DialogResult]::Yes){return}
+   }
    $script:work=Join-Path $env:TEMP ('EditorIA_'+[guid]::NewGuid().ToString('N'))
    New-Item -ItemType Directory -Path $script:work | Out-Null
    $jobfile=Join-Path $script:work 'job.json'
-   @{ffmpeg=$engine;ffprobe=$probe;inputs=$inputs;output=$out.Text.Trim();quality=@('4K','1080p','720p')[$quality.SelectedIndex];musicFolder=$music.Text.Trim();visual=$visual.Checked} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $jobfile -Encoding UTF8
+   @{ffmpeg=$engine;ffprobe=$probe;inputs=$inputs;output=$out.Text.Trim();quality=@('4K','1080p','720p')[$quality.SelectedIndex];musicFolder=$music.Text.Trim();visual=$visual.Checked;cleanVoice=$cleanVoice.Checked} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $jobfile -Encoding UTF8
    $args='-NoProfile -ExecutionPolicy Bypass -File "'+$PSCommandPath+'" -Worker -JobPath "'+$jobfile+'"'
    $script:proc=Start-Process powershell.exe -ArgumentList $args -PassThru -WindowStyle Hidden
    $script:active=$true;$run.Enabled=$false;$stop.Enabled=$true;$bar.Value=0;$status.Text='Processando...'
