@@ -146,13 +146,28 @@ $t.ForeColor=[Drawing.Color]::Gold
 $files=New-Object Windows.Forms.ListBox
 $files.Location=New-Object Drawing.Point(20,118);$files.Size=New-Object Drawing.Size(580,150)
 $files.SelectionMode='MultiExtended';$f.Controls.Add($files)
-$add=Button 'Adicionar' 614 118 145
-$remove=Button 'Remover' 614 158 145
-$clear=Button 'Limpar' 614 198 145
+$add=Button 'Adicionar arquivos' 614 118 145
+$addFolder=Button 'Adicionar pasta' 614 154 145
+$remove=Button 'Remover' 614 190 145
+$clear=Button 'Limpar' 614 226 145
 $add.Add_Click({
  $d=New-Object Windows.Forms.OpenFileDialog;$d.Filter='Videos|*.mp4;*.mov;*.mkv;*.avi;*.webm|Todos|*.*'
  $d.Multiselect=$true
  if($d.ShowDialog() -eq 'OK'){foreach($p in $d.FileNames){if(-not $files.Items.Contains($p)){[void]$files.Items.Add($p)}}}
+})
+$addFolder.Add_Click({
+ $d=New-Object Windows.Forms.FolderBrowserDialog
+ $d.Description='Selecione a pasta que contem os videos copiados para o PC'
+ if($d.ShowDialog() -eq 'OK'){
+   $extensions=@('.mp4','.mov','.mkv','.avi','.webm','.m4v')
+   $paths=@(Get-ChildItem -LiteralPath $d.SelectedPath -File -Recurse -ErrorAction SilentlyContinue |
+     Where-Object { $extensions -contains $_.Extension.ToLowerInvariant() } |
+     Sort-Object FullName)
+   foreach($file in $paths){
+     if(-not $files.Items.Contains($file.FullName)){[void]$files.Items.Add($file.FullName)}
+   }
+   [Windows.Forms.MessageBox]::Show(("Encontrados "+$paths.Count+" videos na pasta e subpastas."),'Editor IA') | Out-Null
+ }
 })
 $remove.Add_Click({for($i=$files.SelectedIndices.Count-1;$i -ge 0;$i--){$files.Items.RemoveAt($files.SelectedIndices[$i])}})
 $clear.Add_Click({$files.Items.Clear()})
