@@ -13,11 +13,11 @@ Editor local para Windows 10 (64 bits), PowerShell 5.1 e FFmpeg. Interface escur
 
 ## Como usar
 
-1. Clique em **Adicionar** e selecione varios videos de vlog.
-2. Clique em **Salvar em...** e escolha um novo arquivo .mp4.
-3. Confira o caminho do **ffmpeg.exe**. O **ffprobe.exe** deve estar na mesma pasta.
-4. Clique em **CRIAR VLOG AUTOMATICAMENTE**.
-5. Aguarde a conclusao e abra a pasta de saida.
+1. Copie a pasta de videos do celular para o computador (no Explorador do Windows, copie a pasta DCIM ou DennyCamera inteira e cole em Documentos).\n2. Clique em **Adicionar pasta** para importar de uma vez todos os videos da pasta e das subpastas. Ou use **Adicionar arquivos** com Ctrl+A para selecionar todos os arquivos da pasta.
+3. Clique em **Salvar em...** e escolha um novo arquivo .mp4.
+4. Confira o caminho do **ffmpeg.exe**. O **ffprobe.exe** deve estar na mesma pasta.
+5. Clique em **CRIAR VLOG AUTOMATICAMENTE**.
+6. Aguarde a conclusao e abra a pasta de saida.
 
 ## O que esta versao faz
 
