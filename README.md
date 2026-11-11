@@ -1,4 +1,4 @@
-# Editor IA 0.4 — Analise visual por trechos (opcional)
+# Editor IA 0.5 — Pre-visualizacao durante a montagem
 
 Editor local para Windows 10 (64 bits), PowerShell 5.1 e FFmpeg. Interface escura, importacao de multiplos videos e criacao automatica de montagem de vlog.
 
@@ -69,3 +69,14 @@ A escolha de trilha nao e uma analise semantica de imagens e nao garante combina
 - **Os videos originais ficam no computador. Somente as imagens amostradas sao enviadas ao servico de IA.** Evite ativar se houver material sensivel ou pessoas sem consentimento apropriado.
 
 Para configurar a chave, crie-a no portal OpenAI Platform usando o fluxo de seguranca. Salve em uma variavel de ambiente de usuario `OPENAI_API_KEY` do Windows e **abra uma nova janela do PowerShell** antes de executar o editor. A chave nao e inclusa no repositorio. A alteracao foi publicada, mas **a versao 0.4 ainda precisa ser testada no Windows**.
+
+## Acompanhar a edicao na tela (0.5)
+
+- A janela passou a ter uma area de **pre-visualizacao de cenas** na lateral direita, sem alterar a resolucao de exportacao escolhida.
+- Durante a montagem, o programa extrai **um quadro JPEG leve** (640 x 360) de cada trecho escolhido e o mostra na interface. A imagem muda quando o programa inicia outra cena; **nao e reproducao continua nem exibicao de todos os quadros em tempo real**.
+- O botao **Reproduzir trecho concluido** abre no reprodutor padrao do Windows o ultimo corte que terminou de ser processado. O sistema espera a conclusao do corte antes de disponibiliza-lo.
+- Ao finalizar a exportacao, o botao passa a **Abrir video final**.
+- O programa ainda exporta 4K quando selecionado e conserva ordem cronologica, fundo desfocado e musica opcional.
+- A interface deve ser testada em um monitor de 1366 x 768; caso a janela nao caiba totalmente, mova-a ou ajuste a escala de exibicao no Windows. Nao inicie dois processos de exportacao ao mesmo tempo.
+
+**Esta versao foi publicada, mas ainda nao foi executada/testada no computador do usuario.**
