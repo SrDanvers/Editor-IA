@@ -196,6 +196,7 @@ if($Worker){
      }
      return 'neutra'
    }
+   $previewFile=Join-Path (Split-Path $JobPath) 'preview.jpg'
    $list=Join-Path $temporary 'concat.txt'
    $records=New-Object System.Collections.Generic.List[string]
    $i=0
@@ -203,6 +204,19 @@ if($Worker){
      CheckCancel
      $i++
      $piece=Join-Path $temporary ('clip_{0:D4}.mp4' -f $i)
+     # Uma miniatura por cena selecionada: leve e visivel durante a exportacao.
+     $thumb=Join-Path (Split-Path $JobPath) ('preview_{0:D4}.jpg' -f $i)
+     $at=[Math]::Max(0,[double]$c.start+[double]$c.length*0.5)
+     $prior=$ErrorActionPreference;$ErrorActionPreference='Continue'
+     try {
+       $null= & $j.ffmpeg -hide_banner -loglevel error -nostdin -y -ss (Fmt $at) -i ([string]$c.path) -frames:v 1 -vf 'scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2' -q:v 5 $thumb 2>&1 | Out-String
+     } finally {$ErrorActionPreference=$prior}
+     if(Test-Path -LiteralPath $thumb){
+       # Troca atomica para evitar que a interface leia JPEG incompleto.
+       Copy-Item -LiteralPath $thumb -Destination ($previewFile+'.new') -Force
+       Move-Item -LiteralPath ($previewFile+'.new') -Destination $previewFile -Force
+     }
+     Report ([int](25+69*($i-1)/$clips.Count)) ("Cena $i de "+$clips.Count+" - "+[IO.Path]::GetFileName([string]$c.path))
      $params=@('-hide_banner','-nostdin','-y','-ss',(Fmt $c.start),'-i',[string]$c.path)
      if(-not $c.audio){$params+=@('-f','lavfi','-i','anullsrc=channel_layout=stereo:sample_rate=44100')}
      $params+=@('-t',(Fmt $c.length))
@@ -294,8 +308,8 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [Windows.Forms.Application]::EnableVisualStyles()
 $f=New-Object Windows.Forms.Form
-$f.Text='Editor IA 0.4 - Vlogs com Visao Opcional'
-$f.Size=New-Object Drawing.Size(800,810)
+$f.Text='Editor IA 0.5 - Previa da Edicao'
+$f.Size=New-Object Drawing.Size(1170,748)
 $f.StartPosition='CenterScreen'
 $f.BackColor=[Drawing.Color]::FromArgb(25,25,28)
 $f.ForeColor='White'
@@ -313,7 +327,7 @@ function Field($x,$y,$w){
  $t=New-Object Windows.Forms.TextBox;$t.Location=New-Object Drawing.Point($x,$y);$t.Size=New-Object Drawing.Size($w,26)
  $f.Controls.Add($t);return $t
 }
-$t=Label 'EDITOR IA 0.4' 20 12
+$t=Label 'EDITOR IA 0.5' 20 12
 $t.Font=New-Object Drawing.Font('Segoe UI',18,[Drawing.FontStyle]::Bold)
 $t.ForeColor=[Drawing.Color]::Gold
 [void](Label 'Vlogs: ordem cronologica, cenas longas, fundo desfocado e musica automatica' 20 52)
@@ -402,17 +416,72 @@ $stop=Button 'CANCELAR' 418 583 145;$stop.Enabled=$false
 $folder=Button 'Abrir pasta' 576 583 183
 $bar=New-Object Windows.Forms.ProgressBar;$bar.Location=New-Object Drawing.Point(20,633)
 $bar.Size=New-Object Drawing.Size(739,19);$f.Controls.Add($bar)
-$status=Label 'IA visual usa API paga e envia quadros somente quando ativada.' 20 668
+$status=Label 'A pre-visualizacao mostra quadros dos trechos em edicao, sem decodificacao 4K continua.' 20 664
+$previewTitle=Label 'PRE-VISUALIZACAO DA MONTAGEM' 787 88 350
+$previewTitle.ForeColor=[Drawing.Color]::Gold
+$previewTitle.Font=New-Object Drawing.Font('Segoe UI',12,[Drawing.FontStyle]::Bold)
+$preview=New-Object Windows.Forms.PictureBox
+$preview.Location=New-Object Drawing.Point(786,121)
+$preview.Size=New-Object Drawing.Size(345,225)
+$preview.BackColor=[Drawing.Color]::Black
+$preview.BorderStyle='FixedSingle'
+$preview.SizeMode='Zoom'
+$f.Controls.Add($preview)
+$previewInfo=Label 'Aguardando a primeira cena...' 786 359 345
+$previewInfo.AutoEllipsis=$true
+$previewInfo.Size=New-Object Drawing.Size(345,48)
+$previewHelp=Label 'Imagem do trecho atual, nao video ao vivo. Clique abaixo para reproduzir um corte processado.' 786 411 350
+$previewHelp.Size=New-Object Drawing.Size(345,70)
+$playClip=Button 'Reproduzir trecho concluido' 786 486 345
+$playClip.Enabled=$false
+$script:lastClip=$null
+$playClip.Add_Click({
+ if($script:lastClip -and (Test-Path -LiteralPath $script:lastClip -PathType Leaf)){
+   Start-Process -FilePath $script:lastClip
+ }else{
+   [Windows.Forms.MessageBox]::Show('O trecho ainda nao esta disponivel.','Editor IA') | Out-Null
+ }
+})
 $script:work=$null;$script:proc=$null;$script:active=$false
+$script:previewStamp=[datetime]::MinValue
+function UpdatePreview {
+ if(-not $script:work){return}
+ $path=Join-Path $script:work 'preview.jpg'
+ if(-not (Test-Path -LiteralPath $path -PathType Leaf)){return}
+ try {
+   $stamp=(Get-Item -LiteralPath $path).LastWriteTimeUtc
+   if($stamp -le $script:previewStamp){return}
+   $bytes=[IO.File]::ReadAllBytes($path)
+   $stream=New-Object IO.MemoryStream(,$bytes)
+   try{
+     $img=[Drawing.Image]::FromStream($stream)
+     try{$copy=New-Object Drawing.Bitmap($img)}finally{$img.Dispose()}
+   }finally{$stream.Dispose()}
+   $oldImage=$preview.Image
+   $preview.Image=$copy
+   if($oldImage){$oldImage.Dispose()}
+   $script:previewStamp=$stamp
+ }catch{}
+}
 $timer=New-Object Windows.Forms.Timer;$timer.Interval=800
 $timer.Add_Tick({
  if(-not $script:active){return}
+ UpdatePreview
  $s=Join-Path $script:work 'status.json'
  if(Test-Path $s){
    try{
      $v=Get-Content -LiteralPath $s -Raw -Encoding UTF8 | ConvertFrom-Json
      $bar.Value=[Math]::Max(0,[Math]::Min(100,[int]$v.pct))
      $status.Text=$v.message
+     $previewInfo.Text=$v.message
+     $clipsAvailable=@(Get-ChildItem -LiteralPath (Join-Path $script:work 'parts') -Filter 'clip_*.mp4' -File -ErrorAction SilentlyContinue | Sort-Object Name)
+     if($clipsAvailable.Count -gt 0){
+       $latest=$clipsAvailable[-1]
+       if($latest.Length -gt 1024){
+         $script:lastClip=$latest.FullName
+         $playClip.Enabled=$true
+       }
+     }
      if($v.state -in @('success','error','cancel')){
        $script:active=$false;$timer.Stop();$run.Enabled=$true;$stop.Enabled=$false
        if($v.state -eq 'success'){[Windows.Forms.MessageBox]::Show('Video exportado.','Editor IA') | Out-Null}
@@ -450,6 +519,9 @@ $run.Add_Click({
    $args='-NoProfile -ExecutionPolicy Bypass -File "'+$PSCommandPath+'" -Worker -JobPath "'+$jobfile+'"'
    $script:proc=Start-Process powershell.exe -ArgumentList $args -PassThru -WindowStyle Hidden
    $script:active=$true;$run.Enabled=$false;$stop.Enabled=$true;$bar.Value=0;$status.Text='Processando...'
+   $script:previewStamp=[datetime]::MinValue
+   $script:lastClip=$null;$playClip.Enabled=$false;$previewInfo.Text='Aguardando a primeira cena...'
+   if($preview.Image){$preview.Image.Dispose();$preview.Image=$null}
    $timer.Start()
  }catch{[Windows.Forms.MessageBox]::Show($_.Exception.Message,'Editor IA') | Out-Null}
 })
