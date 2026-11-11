@@ -1,4 +1,4 @@
-# Editor IA 0.5 — Pre-visualizacao durante a montagem
+# Editor IA 0.6 — Voz limpa e trilha musical
 
 Editor local para Windows 10 (64 bits), PowerShell 5.1 e FFmpeg. Interface escura, importacao de multiplos videos e criacao automatica de montagem de vlog.
 
@@ -80,3 +80,13 @@ Para configurar a chave, crie-a no portal OpenAI Platform usando o fluxo de segu
 - A interface deve ser testada em um monitor de 1366 x 768; caso a janela nao caiba totalmente, mova-a ou ajuste a escala de exibicao no Windows. Nao inicie dois processos de exportacao ao mesmo tempo.
 
 **Esta versao foi publicada, mas ainda nao foi executada/testada no computador do usuario.**
+
+## Melhorias de audio (versao 0.6)
+
+- A caixa **Reduzir vento e priorizar voz** vem ativada. Aplica um filtro de graves (`highpass`), limita frequencias agudas, reduz ruido constante com `afftdn` e usa compressao e limitacao para tornar a voz mais consistente.
+- Ruido de vento **forte e sobreposto a voz nao pode ser eliminado perfeitamente**; o filtro pode afetar timbre e sons ambientes. Desative a caixa para comparar.
+- Quando houver musicas licenciadas na pasta indicada, o editor coloca musica discreta em volume de 9% (nivel linear) com transicao suave e limitador para evitar saturacao. A voz original permanece como trilha principal.
+- Em modo de visao por IA, escolhe musica para cada cena selecionada; fora desse modo, usa uma trilha para toda a montagem.
+- Se a biblioteca estiver vazia, o programa mostra quantas musicas encontrou e pergunta se deseja exportar mesmo assim. **O editor nao baixa musicas automaticamente**; adicione arquivos MP3/WAV/M4A/FLAC/OGG licenciados.
+- Antes de publicar qualquer video, escute o resultado com fones. A atualizacao foi publicada, mas ainda precisa ser testada no Windows 10 do usuario.
+
