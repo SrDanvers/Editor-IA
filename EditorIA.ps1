@@ -165,16 +165,19 @@ if($Worker){
      $piece=Join-Path $temporary ('clip_{0:D4}.mp4' -f $i)
      $params=@('-hide_banner','-nostdin','-y','-ss',(Fmt $c.start),'-i',[string]$c.path)
      if(-not $c.audio){$params+=@('-f','lavfi','-i','anullsrc=channel_layout=stereo:sample_rate=44100')}
-     $params+=@('-t',(Fmt $c.length),'-map','0:v:0')
-     if($c.audio){$params+=@('-map','0:a:0')}else{$params+=@('-map','1:a:0')}
+     $params+=@('-t',(Fmt $c.length))
      $profile=([string]$j.quality)
      switch($profile){
        '1080p' {$w=1920;$h=1080;$crf='20';$preset='veryfast'}
        '720p'  {$w=1280;$h=720;$crf='23';$preset='veryfast'}
        default {$w=3840;$h=2160;$crf='18';$preset='ultrafast'}
      }
-     $filter="fps=30,scale=$($w):$($h):force_original_aspect_ratio=decrease,pad=$($w):$($h):(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p"
-     $params+=@('-vf',$filter,'-c:v','libx264','-preset',$preset,'-crf',$crf,'-threads','2','-c:a','aac','-b:a','192k','-ar','44100','-ac','2','-shortest',$piece)
+     # Fundo borrado de baixa resolucao para reduzir o custo de CPU.
+     # A camada principal conserva o enquadramento, sem barras pretas.
+     $filter="[0:v]split=2[bgsrc][fgsrc];[bgsrc]scale=320:180:force_original_aspect_ratio=increase,crop=320:180,boxblur=12:1,scale=$($w):$($h),setsar=1[bg];[fgsrc]scale=$($w):$($h):force_original_aspect_ratio=decrease,setsar=1[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p,fps=30[v]"
+     $params+=@('-filter_complex',$filter,'-map','[v]')
+     if($c.audio){$params+=@('-map','0:a:0')}else{$params+=@('-map','1:a:0')}
+     $params+=@('-c:v','libx264','-preset',$preset,'-crf',$crf,'-threads','2','-c:a','aac','-b:a','192k','-ar','44100','-ac','2','-shortest',$piece)
      [void](Execute -ffArgs $params)
      $records.Add("file '"+$piece.Replace("'","'\''")+"'")
      Report ([int](25+69*$i/$clips.Count)) ("Processando corte $i de "+$clips.Count)
@@ -216,7 +219,7 @@ function Field($x,$y,$w){
 $t=Label 'EDITOR IA 0.2' 20 12
 $t.Font=New-Object Drawing.Font('Segoe UI',18,[Drawing.FontStyle]::Bold)
 $t.ForeColor=[Drawing.Color]::Gold
-[void](Label 'Vlogs: ordem de gravacao (data/hora), cenas longas, ate 4K' 20 52)
+[void](Label 'Vlogs: ordem de gravacao, fundo desfocado, cenas longas, ate 4K' 20 52)
 [void](Label '1. Videos para analisar' 20 90)
 $files=New-Object Windows.Forms.ListBox
 $files.Location=New-Object Drawing.Point(20,118);$files.Size=New-Object Drawing.Size(580,150)
