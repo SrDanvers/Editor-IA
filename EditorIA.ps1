@@ -21,7 +21,10 @@ if($Worker){
    try { $lines= & $j.ffmpeg @args 2>&1 | Out-String } finally { $ErrorActionPreference=$prior }
    $exit=$LASTEXITCODE
    Add-Content -LiteralPath $log -Value $lines -Encoding UTF8
-   if($exit -ne 0){throw "FFmpeg terminou com codigo $exit. Veja ffmpeg.log"}
+   if($exit -ne 0){
+     $last=($lines -split '\r?\n' | Where-Object { $_.Trim() } | Select-Object -Last 4) -join ' | '
+     throw ("FFmpeg erro "+$exit+": "+$last+" [Log: "+$log+"]")
+   }
    return $lines
  }
  try{
@@ -111,7 +114,7 @@ if($Worker){
    if($_.Exception.Message -match 'Cancelado'){Report 0 'Processamento cancelado' 'cancel'}
    else{Report 0 $_.Exception.Message 'error'}
  } finally {
-   Remove-Item -LiteralPath $temporary -Recurse -Force -ErrorAction SilentlyContinue
+   if((Test-Path $progress) -and ((Get-Content -LiteralPath $progress -Raw | ConvertFrom-Json).state -eq 'success')){ Remove-Item -LiteralPath $temporary -Recurse -Force -ErrorAction SilentlyContinue }
  }
  return
 }
