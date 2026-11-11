@@ -103,54 +103,52 @@ if($Worker){
        }else{[void]$merged.Add(@{start=[double]$r.start;end=[double]$r.end})}
      }
      $options=New-Object System.Collections.ArrayList
+     # Apenas cortes em pausas detectadas. Margem de 0,45s antes/depois da fala.
+     # NAO dividir falas por limite arbitrario de 40 segundos.
      foreach($r in $merged){
-       $span=[double]$r.end-[double]$r.start
-       if($span -lt 8){continue}
-       # 25 a 40 segundos, mantendo varios segundos de folga entre trechos.
-       $cursor=[double]$r.start
-       while($cursor -lt [double]$r.end){
-         $available=[double]$r.end-$cursor
-         if($available -lt 12){break}
-         $length=[Math]::Min(40,$available)
-         [void]$options.Add(@{start=$cursor;length=$length})
-         $cursor+=$length+10
+       $rawStart=[double]$r.start
+       $rawEnd=[double]$r.end
+       $start=[Math]::Max(0,$rawStart-0.45)
+       $end=[Math]::Min([double]$v.duration,$rawEnd+0.45)
+       if(($end-$start) -ge 4){
+         [void]$options.Add(@{start=$start;length=($end-$start)})
        }
      }
      if($options.Count -eq 0){
-       # Se nao houver fala longa, usar um trecho mais continuo do arquivo.
-       [void]$options.Add(@{start=0.0;length=[Math]::Min(40,[double]$v.duration)})
+       # Sem pausas confiaveis: conservar o video inteiro, sem cortar frases.
+       [void]$options.Add(@{start=0.0;length=[double]$v.duration})
      }
-     # Preferir uma cena da metade do arquivo, evitando selecionar sempre o inicio.
+     # Dar preferencia a um bloco completo da metade do video.
      $first=@($options | Sort-Object @{Expression={[Math]::Abs(($_.start+$_.length/2)-([double]$v.duration/2))}})[0]
      [void]$candidates.Add(@{path=$v.path;duration=$v.duration;audio=$v.audio;order=$index;options=@($options);first=$first})
    }
-   # Primeiro: distribuicao equilibrada, uma cena por video, sem repeticoes.
-   $remaining=$goal
-   $firstQuota=[Math]::Min(40,[Math]::Max(12,[Math]::Floor($goal/[Math]::Max(1,$candidates.Count))))
+   # Preservar ao menos um bloco COMPLETO de cada video na ordem cronologica.
+   # A duracao desejada e um alvo flexivel, nunca um ponto de corte dentro da fala.
+   $usedSeconds=0.0
    foreach($entry in $candidates){
-     if($remaining -lt 2){break}
-     $take=[Math]::Min([double]$entry.first.length,[Math]::Min($firstQuota,$remaining))
-     if($take -ge 2){
-       [void]$clips.Add(@{path=$entry.path;start=$entry.first.start;length=$take;audio=$entry.audio;order=$entry.order;pass=1})
-       $remaining-=$take
+     $opt=$entry.first
+     if([double]$opt.length -ge 2){
+       [void]$clips.Add(@{path=$entry.path;start=$opt.start;length=$opt.length;audio=$entry.audio;order=$entry.order;pass=1})
+       $usedSeconds += [double]$opt.length
      }
    }
-   # Segunda passagem somente quando o total de arquivos e pequeno,
-   # escolhendo um intervalo realmente separado do primeiro.
-   if($candidates.Count -le 6 -and $remaining -ge 12){
+   # Se ainda couber, adicionar outra fala completa, sem sobrepor a primeira.
+   if($usedSeconds -lt $goal -and $candidates.Count -le 6){
      foreach($entry in $candidates){
-       if($remaining -lt 12){break}
-       $chosen=$null
-       foreach($opt in @($entry.options | Sort-Object start)){
-         $a=[double]$opt.start;$b=$a+[double]$opt.length
-         $f=[double]$entry.first.start;$g=$f+[double]$entry.first.length
-         if(($b -le ($f-8)) -or ($a -ge ($g+8))){$chosen=$opt;break}
-       }
-       if($null -ne $chosen){
-         $take=[Math]::Min([double]$chosen.length,[Math]::Min(40,$remaining))
-         if($take -ge 12){
-           [void]$clips.Add(@{path=$entry.path;start=$chosen.start;length=$take;audio=$entry.audio;order=$entry.order;pass=2})
-           $remaining-=$take
+       if($usedSeconds -ge $goal){break}
+       $firstStart=[double]$entry.first.start
+       $firstEnd=$firstStart+[double]$entry.first.length
+       $other=@($entry.options | Sort-Object start | Where-Object {
+         $start=[double]$_.start
+         $end=$start+[double]$_.length
+         ($end -le ($firstStart-1)) -or ($start -ge ($firstEnd+1))
+       } | Select-Object -First 1)
+       if($other.Count -gt 0){
+         $opt=$other[0]
+         # Nao adicionar bloco que ultrapasse muito a duracao-alvo.
+         if(($usedSeconds+[double]$opt.length) -le ($goal+30)){
+           [void]$clips.Add(@{path=$entry.path;start=$opt.start;length=$opt.length;audio=$entry.audio;order=$entry.order;pass=2})
+           $usedSeconds += [double]$opt.length
          }
        }
      }
@@ -324,7 +322,7 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [Windows.Forms.Application]::EnableVisualStyles()
 $f=New-Object Windows.Forms.Form
-$f.Text='Editor IA 0.6 - Voz Limpa e Musica'
+$f.Text='Editor IA 0.7 - Cortes Sem Interromper Falas'
 $f.Size=New-Object Drawing.Size(1170,748)
 $f.StartPosition='CenterScreen'
 $f.BackColor=[Drawing.Color]::FromArgb(25,25,28)
@@ -343,7 +341,7 @@ function Field($x,$y,$w){
  $t=New-Object Windows.Forms.TextBox;$t.Location=New-Object Drawing.Point($x,$y);$t.Size=New-Object Drawing.Size($w,26)
  $f.Controls.Add($t);return $t
 }
-$t=Label 'EDITOR IA 0.6' 20 12
+$t=Label 'EDITOR IA 0.7' 20 12
 $t.Font=New-Object Drawing.Font('Segoe UI',18,[Drawing.FontStyle]::Bold)
 $t.ForeColor=[Drawing.Color]::Gold
 [void](Label 'Vlogs: ordem cronologica, cenas longas, fundo desfocado e musica automatica' 20 52)
