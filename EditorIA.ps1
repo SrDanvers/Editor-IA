@@ -164,14 +164,14 @@ if($Worker){
        Where-Object { @('.mp3','.wav','.m4a','.flac','.ogg') -contains $_.Extension.ToLowerInvariant() } | Sort-Object FullName)
    }
    if([bool]$j.visual -and -not $visionOn){ Report 26 'Sem OPENAI_API_KEY: trilhas seguem a escolha local.' }
-   $visionUsed=0
+   $script:visionUsed=0
    $visionMemo=@{}
    function VisualCategory($cut){
-     if(-not $visionOn -or $visionUsed -ge 8){return 'neutra'}
+     if(-not $visionOn -or $script:visionUsed -ge 8){return 'neutra'}
      $frameContent=New-Object System.Collections.ArrayList
      foreach($fraction in @(0.25,0.70)){
        $position=[double]$cut.start+([double]$cut.length*$fraction)
-       $img=Join-Path $temporary ('quadro_'+$visionUsed+'_'+$fraction.ToString('0.00',[Globalization.CultureInfo]::InvariantCulture)+'.jpg')
+       $img=Join-Path $temporary ('quadro_'+$script:visionUsed+'_'+$fraction.ToString('0.00',[Globalization.CultureInfo]::InvariantCulture)+'.jpg')
        $prior=$ErrorActionPreference;$ErrorActionPreference='Continue'
        try{$null= & $j.ffmpeg -hide_banner -loglevel error -nostdin -y -ss (Fmt $position) -i ([string]$cut.path) -frames:v 1 -vf 'scale=448:-2' -q:v 5 $img 2>&1 | Out-String}finally{$ErrorActionPreference=$prior}
        if(Test-Path -LiteralPath $img){
@@ -181,7 +181,7 @@ if($Worker){
        }
      }
      if($frameContent.Count -eq 0){return 'neutra'}
-     $visionUsed++
+     $script:visionUsed++
      $payload=@{
        model='gpt-4.1-mini'
        max_output_tokens=24
