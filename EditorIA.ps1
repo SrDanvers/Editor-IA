@@ -214,7 +214,15 @@ $run.Add_Click({
    if(-not $out.Text.Trim().ToLowerInvariant().EndsWith('.mp4')){throw 'Selecione um arquivo MP4 de saida'}
    if(Test-Path $out.Text){throw 'O arquivo de saida ja existe; escolha outro nome'}
    if(-not(Test-Path (Split-Path $out.Text))){throw 'A pasta de saida nao existe'}
-   $inputs=@();foreach($v in $files.Items){$inputs+=([string]$v)}
+   $inputs=@()
+   foreach($v in $files.Items){
+     $path=[string]$v
+     if($path -match '(?i)\\INetCache\\'){
+       throw 'Video selecionado diretamente do celular (arquivo temporario). Copie primeiro os videos para uma pasta local no PC, clique Limpar e adicione-os novamente.'
+     }
+     if(-not(Test-Path -LiteralPath $path -PathType Leaf)){throw ("Arquivo nao encontrado: "+$path)}
+     $inputs+=$path
+   }
    $script:work=Join-Path $env:TEMP ('EditorIA_'+[guid]::NewGuid().ToString('N'))
    New-Item -ItemType Directory -Path $script:work | Out-Null
    $jobfile=Join-Path $script:work 'job.json'
