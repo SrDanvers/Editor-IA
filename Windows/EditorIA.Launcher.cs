@@ -12,7 +12,8 @@ namespace EditorIA
         private static void ExtractResource(string resource, string filename, string folder)
         {
             string path = Path.Combine(folder, filename);
-            if (File.Exists(path)) return;
+            // Always refresh bundled scripts so an updated EXE never starts an older version.
+            // The user's media and settings live elsewhere and are not replaced.
             using (Stream input = Assembly.GetExecutingAssembly().GetManifestResourceStream(resource))
             {
                 if (input == null) throw new FileNotFoundException("Recurso nao encontrado no EXE: " + resource);
