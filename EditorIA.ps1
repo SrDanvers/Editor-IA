@@ -365,9 +365,13 @@ if($Worker){
      # Pode levar alguns segundos para ficar pronta; nao e imagem fixa.
      if([bool]$j.livePreview){
        $proxy=Join-Path $temporary ('previsualizacao_{0:D4}.mp4' -f $i)
+       $proxyFx='fps=15,scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2'
+       if([bool]$j.autoZoom -and ($i % 3 -eq 2) -and ([double]$c.length -ge 7){
+         $proxyFx+=",zoompan=z='1+0.20*sin(PI*min(on\,75)/75)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=640x360:fps=15"
+       }
        $prior=$ErrorActionPreference;$ErrorActionPreference='Continue'
        try {
-         $null= & $j.ffmpeg -hide_banner -loglevel error -nostdin -y -ss (Fmt ([double]$c.start)) -i ([string]$c.path) -t (Fmt ([double]$c.length)) -an -vf 'fps=15,scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2' -c:v libx264 -preset ultrafast -crf 29 -threads 2 -movflags +faststart $proxy 2>&1 | Out-String
+         $null= & $j.ffmpeg -hide_banner -loglevel error -nostdin -y -ss (Fmt ([double]$c.start)) -i ([string]$c.path) -t (Fmt ([double]$c.length)) -an -vf $proxyFx -c:v libx264 -preset ultrafast -crf 29 -threads 2 -movflags +faststart $proxy 2>&1 | Out-String
        } finally {$ErrorActionPreference=$prior}
        if(Test-Path -LiteralPath $proxy){
          Set-Content -LiteralPath (Join-Path (Split-Path $JobPath) 'preview_video.txt') -Value $proxy -Encoding UTF8
@@ -398,7 +402,17 @@ if($Worker){
      # Fundo borrado de baixa resolucao para reduzir o custo de CPU.
      # A camada principal conserva o enquadramento, sem barras pretas.
      $filter="[0:v]split=2[bgsrc][fgsrc];[bgsrc]scale=320:180:force_original_aspect_ratio=increase,crop=320:180,boxblur=12:1,scale=$($w):$($h),setsar=1[bg];[fgsrc]scale=$($w):$($h):force_original_aspect_ratio=decrease,setsar=1[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p,fps=30[v]"
-     $params+=@('-filter_complex',$filter,'-map','[v]')
+     # Zoom cinematografico limitado a uma cena a cada tres, evitando movimentos repetitivos.
+     # A curva sobe e desce suavemente durante os primeiros 5 segundos do corte.
+     $enableZoom=([bool]$j.autoZoom) -and ($i % 3 -eq 2) -and ([double]$c.length -ge 7)
+     if($enableZoom){
+       $zoomAmount=0.20
+       $zoomFx="zoompan=z='1+$zoomAmount*sin(PI*min(on\,150)/150)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=$($w)x$($h):fps=30"
+       $filter+=';[v]'+$zoomFx+'[outv]'
+       $params+=@('-filter_complex',$filter,'-map','[outv]')
+     }else{
+       $params+=@('-filter_complex',$filter,'-map','[v]')
+     }
      if($c.audio){$params+=@('-map','0:a:0')}else{$params+=@('-map','1:a:0')}
      if([bool]$j.cleanVoice){
        # Reduz vento (frequencias graves), ruido constante e equilibra a voz.
@@ -454,7 +468,7 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [Windows.Forms.Application]::EnableVisualStyles()
 $f=New-Object Windows.Forms.Form
-$f.Text='Editor IA 1.1 Beta - Previa em Movimento e Musicas Variadas'
+$f.Text='Editor IA 1.2 Beta - Zoom Cinematografico'
 $f.Size=New-Object Drawing.Size(1170,840)
 $f.AutoScroll=$true
 $f.StartPosition='CenterScreen'
@@ -474,7 +488,7 @@ function Field($x,$y,$w){
  $t=New-Object Windows.Forms.TextBox;$t.Location=New-Object Drawing.Point($x,$y);$t.Size=New-Object Drawing.Size($w,26)
  $f.Controls.Add($t);return $t
 }
-$t=Label 'EDITOR IA 1.1 BETA' 20 12
+$t=Label 'EDITOR IA 1.2 BETA' 20 12
 $t.Font=New-Object Drawing.Font('Segoe UI',18,[Drawing.FontStyle]::Bold)
 $t.ForeColor=[Drawing.Color]::Gold
 [void](Label 'Vlogs: ordem cronologica, cenas longas, fundo desfocado e musica automatica' 20 52)
@@ -550,6 +564,13 @@ $musicBrowse.Add_Click({
 })
 $musicDefault=Join-Path $PSScriptRoot 'Musicas'
 if(Test-Path -LiteralPath $musicDefault -PathType Container){$music.Text=$musicDefault}
+$autoZoom=New-Object Windows.Forms.CheckBox
+$autoZoom.Text='Zoom cinematografico automatico (1.2x, em algumas cenas)'
+$autoZoom.Location=New-Object Drawing.Point(20,559)
+$autoZoom.Size=New-Object Drawing.Size(730,24)
+$autoZoom.ForeColor=[Drawing.Color]::White
+$autoZoom.Checked=$true
+$f.Controls.Add($autoZoom)
 $visual=New-Object Windows.Forms.CheckBox
 $visual.Text='Analisar imagens dos trechos selecionados (IA online - envia ate 16 quadros)'
 $visual.Location=New-Object Drawing.Point(20,531)
@@ -779,7 +800,7 @@ $run.Add_Click({
    $script:work=Join-Path $env:TEMP ('EditorIA_'+[guid]::NewGuid().ToString('N'))
    New-Item -ItemType Directory -Path $script:work | Out-Null
    $jobfile=Join-Path $script:work 'job.json'
-   @{ffmpeg=$engine;ffprobe=$probe;inputs=$inputs;output=$out.Text.Trim();quality=@('4K','1080p','720p')[$quality.SelectedIndex];musicFolder=$music.Text.Trim();visual=$visual.Checked;cleanVoice=$cleanVoice.Checked;transcribe=$transcribe.Checked;livePreview=$livePreview.Checked;localVision=$localVision.Checked} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $jobfile -Encoding UTF8
+   @{ffmpeg=$engine;ffprobe=$probe;inputs=$inputs;output=$out.Text.Trim();quality=@('4K','1080p','720p')[$quality.SelectedIndex];musicFolder=$music.Text.Trim();visual=$visual.Checked;cleanVoice=$cleanVoice.Checked;transcribe=$transcribe.Checked;livePreview=$livePreview.Checked;localVision=$localVision.Checked;autoZoom=$autoZoom.Checked} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $jobfile -Encoding UTF8
    $args='-NoProfile -ExecutionPolicy Bypass -File "'+$PSCommandPath+'" -Worker -JobPath "'+$jobfile+'"'
    $script:proc=Start-Process powershell.exe -ArgumentList $args -PassThru -WindowStyle Hidden
    $script:active=$true;$run.Enabled=$false;$stop.Enabled=$true;$bar.Value=0;$status.Text='Processando...'
