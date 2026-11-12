@@ -197,7 +197,11 @@ if($Worker){
        [void]$options.Add(@{start=0.0;length=[double]$v.duration})
      }
      # Dar preferencia a um bloco completo da metade do video.
-     $first=@($options | Sort-Object @{Expression={[Math]::Abs(($_.start+$_.length/2)-([double]$v.duration/2))}})[0]
+     # Duracao preferida: seleciona o bloco de fala COMPLETO mais proximo do tempo.
+     # Nunca encerra no meio de uma frase somente para cumprir o limite.
+     $preferred=[double]$j.cutSeconds
+     if($preferred -lt 8 -or $preferred -gt 180){$preferred=30}
+     $first=@($options | Sort-Object @{Expression={[Math]::Abs(([double]$_.length)-$preferred)}},@{Expression={[Math]::Abs(($_.start+$_.length/2)-([double]$v.duration/2))}})[0]
      [void]$candidates.Add(@{path=$v.path;duration=$v.duration;audio=$v.audio;order=$index;options=@($options);first=$first})
    }
    # Preservar ao menos um bloco COMPLETO de cada video na ordem cronologica.
@@ -366,8 +370,15 @@ if($Worker){
      if([bool]$j.livePreview){
        $proxy=Join-Path $temporary ('previsualizacao_{0:D4}.mp4' -f $i)
        $proxyFx='fps=15,scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2'
-       if(([bool]$j.autoZoom) -and ($i % 3 -eq 2) -and ([double]$c.length -ge 7)){
-         $proxyFx+=",zoompan=z='1+0.20*sin(PI*min(on\,75)/75)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=640x360:fps=15"
+       if(([bool]$j.autoZoom) -and ($i % 3 -eq 2) -and ([double]$c.length -ge 3)){
+         $zoomSeconds=[Math]::Min([double]$j.zoomSeconds,[double]$c.length-0.5)
+         if($zoomSeconds -lt 1){$zoomSeconds=3}
+         $frames=[Math]::Max(15,[int][Math]::Round($zoomSeconds*15))
+         if([string]$j.zoomStyle -eq 'Seco'){
+           $proxyFx+=",zoompan=z='if(lt(on\,8)\,1\,if(lt(on\,$frames)\,1.2\,1))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=640x360:fps=15"
+         }else{
+           $proxyFx+=",zoompan=z='1+0.20*sin(PI*min(on\,$frames)/$frames)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=640x360:fps=15"
+         }
        }
        $prior=$ErrorActionPreference;$ErrorActionPreference='Continue'
        try {
@@ -404,10 +415,18 @@ if($Worker){
      $filter="[0:v]split=2[bgsrc][fgsrc];[bgsrc]scale=320:180:force_original_aspect_ratio=increase,crop=320:180,boxblur=12:1,scale=$($w):$($h),setsar=1[bg];[fgsrc]scale=$($w):$($h):force_original_aspect_ratio=decrease,setsar=1[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p,fps=30[v]"
      # Zoom cinematografico limitado a uma cena a cada tres, evitando movimentos repetitivos.
      # A curva sobe e desce suavemente durante os primeiros 5 segundos do corte.
-     $enableZoom=([bool]$j.autoZoom) -and ($i % 3 -eq 2) -and ([double]$c.length -ge 7)
+     $enableZoom=([bool]$j.autoZoom) -and ($i % 3 -eq 2) -and ([double]$c.length -ge 3)
      if($enableZoom){
-       $zoomAmount=0.20
-       $zoomFx="zoompan=z='1+$zoomAmount*sin(PI*min(on\,150)/150)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=$($w)x$($h):fps=30"
+       $zoomSeconds=[Math]::Min([double]$j.zoomSeconds,[double]$c.length-0.5)
+       if($zoomSeconds -lt 1){$zoomSeconds=3}
+       $frames=[Math]::Max(30,[int][Math]::Round($zoomSeconds*30))
+       if([string]$j.zoomStyle -eq 'Seco'){
+         # Corte seco: muda de 1x para 1.2x e retorna ao fim do intervalo escolhido.
+         $z="if(lt(on\,15)\,1\,if(lt(on\,$frames)\,1.2\,1))"
+       }else{
+         $z="1+0.20*sin(PI*min(on\,$frames)/$frames)"
+       }
+       $zoomFx="zoompan=z='$z':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=$($w)x$($h):fps=30"
        $filter+=';[v]'+$zoomFx+'[outv]'
        $params+=@('-filter_complex',$filter,'-map','[outv]')
      }else{
@@ -841,7 +860,7 @@ $run.Add_Click({
    $script:work=Join-Path $env:TEMP ('EditorIA_'+[guid]::NewGuid().ToString('N'))
    New-Item -ItemType Directory -Path $script:work | Out-Null
    $jobfile=Join-Path $script:work 'job.json'
-   @{ffmpeg=$engine;ffprobe=$probe;inputs=$inputs;output=$out.Text.Trim();quality=@('4K','1080p','720p')[$quality.SelectedIndex];musicFolder=$music.Text.Trim();visual=$visual.Checked;cleanVoice=$cleanVoice.Checked;transcribe=$transcribe.Checked;livePreview=$livePreview.Checked;localVision=$localVision.Checked;autoZoom=$autoZoom.Checked;outroImage=$outroImage.Text.Trim();outroSeconds=@(5,8,10,15)[$outroDuration.SelectedIndex]} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $jobfile -Encoding UTF8
+   @{ffmpeg=$engine;ffprobe=$probe;inputs=$inputs;output=$out.Text.Trim();quality=@('4K','1080p','720p')[$quality.SelectedIndex];musicFolder=$music.Text.Trim();visual=$visual.Checked;cleanVoice=$cleanVoice.Checked;transcribe=$transcribe.Checked;livePreview=$livePreview.Checked;localVision=$localVision.Checked;autoZoom=$autoZoom.Checked;cutSeconds=@(15,30,60,90)[$cutTime.SelectedIndex];zoomSeconds=@(2,3,5,8)[$zoomTime.SelectedIndex];zoomStyle=[string]$zoomStyle.SelectedItem;outroImage=$outroImage.Text.Trim();outroSeconds=@(5,8,10,15)[$outroDuration.SelectedIndex]} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $jobfile -Encoding UTF8
    $args='-NoProfile -ExecutionPolicy Bypass -File "'+$PSCommandPath+'" -Worker -JobPath "'+$jobfile+'"'
    $script:proc=Start-Process powershell.exe -ArgumentList $args -PassThru -WindowStyle Hidden
    $script:active=$true;$run.Enabled=$false;$stop.Enabled=$true;$bar.Value=0;$status.Text='Processando...'
@@ -858,12 +877,12 @@ $stop.Add_Click({if($script:active){New-Item -ItemType File -Path (Join-Path $sc
 $folder.Add_Click({$p=Split-Path $out.Text;if($p -and (Test-Path $p)){Start-Process explorer.exe -ArgumentList ('"'+$p+'"')}})
 
 # ===== Editor IA 1.3: interface organizada em tres abas =====
-$f.Text='Editor IA 1.3 - Editor de Vlogs'
+$f.Text='Editor IA 1.4 - Cortes e Zoom Personalizaveis'
 $f.ClientSize=New-Object Drawing.Size(1130,690)
 $f.AutoScroll=$false
 $f.MinimumSize=New-Object Drawing.Size(1000,690)
 $f.BackColor=[Drawing.Color]::FromArgb(17,18,23)
-$t.Text='EDITOR IA   |   STUDIO 1.3'
+$t.Text='EDITOR IA   |   STUDIO 1.4'
 $t.Location=New-Object Drawing.Point(26,14)
 $t.Size=New-Object Drawing.Size(900,37)
 $t.Font=New-Object Drawing.Font('Segoe UI',19,[Drawing.FontStyle]::Bold)
@@ -960,12 +979,47 @@ Place $livePreview $editTab 29 162 770 30
 Place $localVision $editTab 29 202 770 30
 Place $cleanVoice $editTab 29 242 770 30
 Place $transcribe $editTab 29 282 770 30
-Place $musicState $editTab 29 327 970 50
-Place $run $editTab 29 408 472 43
-Place $stop $editTab 517 408 225 43
-Place $folder $editTab 758 408 244 43
-Place $bar $editTab 29 475 973 22
-Place $status $editTab 29 513 973 65
+
+# Duracao preferida e zoom personalizavel.
+$cutLabel=New-Object Windows.Forms.Label
+$cutLabel.Text='DURACAO PREFERIDA DOS CORTES'
+$cutLabel.ForeColor=[Drawing.Color]::FromArgb(255,204,0)
+Place $cutLabel $editTab 29 321 310 26
+$cutTime=New-Object Windows.Forms.ComboBox
+$cutTime.DropDownStyle='DropDownList'
+@('15 segundos','30 segundos','60 segundos','90 segundos') | ForEach-Object {[void]$cutTime.Items.Add($_)}
+$cutTime.SelectedIndex=1
+Place $cutTime $editTab 340 319 190 29
+$zoomLabel=New-Object Windows.Forms.Label
+$zoomLabel.Text='TEMPO DO ZOOM'
+$zoomLabel.ForeColor=[Drawing.Color]::FromArgb(255,204,0)
+Place $zoomLabel $editTab 29 366 185 27
+$zoomTime=New-Object Windows.Forms.ComboBox
+$zoomTime.DropDownStyle='DropDownList'
+@('2 segundos','3 segundos','5 segundos','8 segundos') | ForEach-Object {[void]$zoomTime.Items.Add($_)}
+$zoomTime.SelectedIndex=2
+Place $zoomTime $editTab 212 364 150 30
+$zoomStyleLabel=New-Object Windows.Forms.Label
+$zoomStyleLabel.Text='ESTILO DE ZOOM'
+$zoomStyleLabel.ForeColor=[Drawing.Color]::FromArgb(255,204,0)
+Place $zoomStyleLabel $editTab 410 366 170 27
+$zoomStyle=New-Object Windows.Forms.ComboBox
+$zoomStyle.DropDownStyle='DropDownList'
+[void]$zoomStyle.Items.Add('Suave')
+[void]$zoomStyle.Items.Add('Seco')
+$zoomStyle.SelectedIndex=0
+Place $zoomStyle $editTab 583 364 170 30
+$cutNote=New-Object Windows.Forms.Label
+$cutNote.Text='Os tempos dos cortes sao preferencias: falas completas podem durar mais.'
+$cutNote.ForeColor=[Drawing.Color]::FromArgb(190,195,205)
+Place $cutNote $editTab 29 400 960 26
+
+Place $musicState $editTab 29 435 970 35
+Place $run $editTab 29 477 472 43
+Place $stop $editTab 517 477 225 43
+Place $folder $editTab 758 477 244 43
+Place $bar $editTab 29 537 973 22
+Place $status $editTab 29 569 973 65
 $run.BackColor=[Drawing.Color]::FromArgb(255,204,0)
 $run.ForeColor=[Drawing.Color]::Black
 $run.Font=New-Object Drawing.Font('Segoe UI Semibold',11)
