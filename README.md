@@ -1,4 +1,4 @@
-# Editor IA 1.0 Beta — Vlogs automáticos no Windows 10
+# Editor IA 1.1 Beta — Vídeo em movimento e música variada no Windows 10
 
 Editor de vlogs em PowerShell 5.1 e FFmpeg, feito para computador de 8 GB de RAM com gráficos Intel HD 3000. Tema escuro/amarelo.
 
@@ -27,10 +27,10 @@ O arquivo final fica na pasta escolhida em **Salvar em...**. Os arquivos de orig
 | Cortes por transcrição (opcional) | Envia somente áudio comprimido para transcrição com timestamps e agrupa frases nos limites |
 | Plano de cortes | Gera `plano_cortes.csv` na pasta de trabalho temporária; pode abrir pelo botão |
 | Visão por cenas (opcional) | Extrai até 16 imagens pequenas de até oito trechos, enviadas à API apenas com a opção ativada |
-| Música | Lê arquivos licenciados da pasta `Musicas`; trilha discreta e alternativa por cena quando a visão está ativa |
+| Música | Lê faixas licenciadas da pasta `Musicas` e alterna automaticamente entre as disponíveis a cada cena e até cada 40 segundos, inclusive sem API |
 | Limpeza de voz | Filtro passa-altas + redução de ruído constante + compressão. Não garante eliminar vento muito forte |
 | Fundo desfocado | Preenche laterais de vídeo vertical com imagem desfocada do próprio vídeo |
-| Prévia | Miniaturas da cena em processamento e botão para abrir trecho finalizado, sem vídeo 4K em tempo real |
+| Prévia em movimento | Gera um vídeo-proxy de 360p/15 fps da cena selecionada para reproduzir na interface enquanto o corte 4K é renderizado; pode repetir a cena até o próximo corte |
 | Exportação | MP4 H.264/AAC 4K (padrão), 1080p ou 720p, via CPU. 4K pode demorar bastante |
 
 ## IA e privacidade
@@ -65,3 +65,17 @@ Se houver erro, consulte os registros `%TEMP%\EditorIA_*\ffmpeg.log`, `status.js
 
 ### Licença
 Consulte os arquivos do repositório antes de redistribuir o software. O conteúdo dos seus vídeos e a licença das músicas são responsabilidades separadas.
+
+## Novo na versão 1.1 Beta: cortes em movimento e músicas distintas
+
+**Ver os cortes se movimentando:** marque `Mostrar cortes em movimento durante a edicao (360p)` (ativado por padrão). O FFmpeg prepara um proxy de baixa resolução do corte selecionado e o Windows Media Element reproduz esse vídeo dentro do editor enquanto a versão final é renderizada. O vídeo muda quando o corte seguinte começa; até lá pode repetir o mesmo trecho. A prévia **não é um monitor de saída 4K em tempo real** e a preparação de cada proxy acrescenta processamento. Se o reprodutor Windows não suportar o arquivo, a miniatura continua disponível.
+
+**Música variada, sem custo de API:** a montagem alterna entre arquivos da sua biblioteca local `Musicas`, em cada cena e em trechos de **até 40 segundos**. A voz fica prioritária. A seleção básica usa categorias nos nomes dos arquivos e das músicas, não análise visual com IA. Com uma única música na pasta, ela inevitavelmente será repetida; adicione pelo menos três faixas diferentes com licença de uso em vídeo.
+
+**IA visual gratuita (opcional):** é possível usar **Ollama + modelo Moondream** no computador. O editor envia somente imagens ao serviço local em `http://127.0.0.1:11434`; não exige chave nem pagamento de API. A opção **IA visual GRATIS local** vem desativada por padrão porque o i5 antigo com 8 GB de RAM pode ficar muito lento. O modelo é aproximadamente 1,7 GB e a inferência no processador pode demorar.
+1. Instale o Ollama para Windows de https://ollama.com/download
+2. Com o Ollama aberto, execute `ollama pull moondream` no PowerShell.
+3. No editor, selecione músicas licenciadas e marque `IA visual GRATIS local`. Não marque simultaneamente a opção de visão na nuvem.
+4. Se não quiser instalar nada, **desmarque IA visual local**: a rotação gratuita das músicas já funciona normalmente.
+
+**Importante:** nem a rotação musical por regras nem a IA visual local garantem identificar corretamente a emoção ou o contexto do vídeo. A análise local limita-se a até oito cenas por montagem; as demais usam a categoria neutra. Até o momento o código foi publicado, mas **a interface com reprodução e o modelo local ainda precisam ser testados no seu Windows**.
