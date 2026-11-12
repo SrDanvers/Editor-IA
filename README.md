@@ -1,4 +1,4 @@
-# Editor IA 1.1 Beta — Vídeo em movimento e música variada no Windows 10
+# Editor IA 1.2 Beta — Zoom cinematográfico, cortes em movimento e músicas variadas
 
 Editor de vlogs em PowerShell 5.1 e FFmpeg, feito para computador de 8 GB de RAM com gráficos Intel HD 3000. Tema escuro/amarelo.
 
@@ -79,3 +79,14 @@ Consulte os arquivos do repositório antes de redistribuir o software. O conteú
 4. Se não quiser instalar nada, **desmarque IA visual local**: a rotação gratuita das músicas já funciona normalmente.
 
 **Importante:** nem a rotação musical por regras nem a IA visual local garantem identificar corretamente a emoção ou o contexto do vídeo. A análise local limita-se a até oito cenas por montagem; as demais usam a categoria neutra. Até o momento o código foi publicado, mas **a interface com reprodução e o modelo local ainda precisam ser testados no seu Windows**.
+
+## Novo: Zoom cinematografico automatico (1.2 Beta)
+
+- O zoom vem ativado por padrao, mas pode ser desativado pela caixa **Zoom cinematografico automatico (1.2x, em algumas cenas)**.
+- Aproximacao maxima de 1,2x, centralizada, com curva gradual de entrada e saida durante os primeiros 5 segundos de cenas selecionadas.
+- Para evitar zoom em todas as cenas, o programa aplica o efeito em aproximadamente **uma a cada tres cenas**, desde que a cena tenha ao menos 7 segundos. Os cortes continuam ordenados pela data/hora da gravacao.
+- A previa em movimento 360p tenta mostrar o mesmo efeito aplicado ao arquivo de exportacao. O processamento 4K do zoom pode exigir muito da CPU i5 antiga.
+- O zoom e seletivo, **mas nao rastreia rostos nem identifica automaticamente o objeto mais importante**. Essa seria uma evolucao posterior; o efeito atual e centralizado.
+- Em 4K a imagem pode perder alguma nitidez devido a ampliacao digital e nova codificacao.
+
+Teste sugerido: escolha 3 a 5 videos curtos, deixe zoom e previa ativados, exporte inicialmente a 720p, confira os movimentos e depois teste 1080p ou 4K. A integracao ao Windows ainda requer teste no computador do usuario.
