@@ -700,6 +700,11 @@ $timer.Add_Tick({
      $bar.Value=[Math]::Max(0,[Math]::Min(100,[int]$v.pct))
      $status.Text=$v.message
      $previewInfo.Text=$v.message
+     $trackLog=Join-Path $script:work 'trilhas_escolhidas.txt'
+     if(Test-Path -LiteralPath $trackLog){
+       $used=@(Get-Content -LiteralPath $trackLog -Encoding UTF8 -ErrorAction SilentlyContinue)
+       if($used.Count -gt 0){$musicState.Text=('Trilhas aplicadas: '+$used.Count+' | '+$used[-1])}
+     }
      $completed=Join-Path $script:work 'completed_clip.txt'
      if(Test-Path -LiteralPath $completed){
        $last=(Get-Content -LiteralPath $completed -Raw -Encoding UTF8).Trim()
@@ -764,6 +769,9 @@ $run.Add_Click({
        Where-Object { @('.mp3','.wav','.m4a','.flac','.ogg') -contains $_.Extension.ToLowerInvariant() })
    }
    $musicState.Text=("Musicas encontradas: "+$musicFiles.Count)
+   if($musicFiles.Count -eq 1){
+     [Windows.Forms.MessageBox]::Show('A pasta tem somente UMA musica. Para variar durante o vlog, adicione pelo menos 3 musicas licenciadas diferentes.','Editor IA') | Out-Null
+   }
    if($musicFiles.Count -eq 0){
      $choice=[Windows.Forms.MessageBox]::Show('Nenhuma musica encontrada. O vlog sera exportado sem trilha musical. Continuar?','Editor IA',[Windows.Forms.MessageBoxButtons]::YesNo,[Windows.Forms.MessageBoxIcon]::Information)
      if($choice -ne [Windows.Forms.DialogResult]::Yes){return}
