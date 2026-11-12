@@ -1,4 +1,4 @@
-# Editor IA 1.2 Beta — Zoom cinematográfico, cortes em movimento e músicas variadas
+# Editor IA 1.2.1 Beta — Zoom e tela final personalizada
 
 Editor de vlogs em PowerShell 5.1 e FFmpeg, feito para computador de 8 GB de RAM com gráficos Intel HD 3000. Tema escuro/amarelo.
 
@@ -100,3 +100,15 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File .\Iniciar_EditorIA.
 ```
 
 Execute esse comando dentro da pasta extraida do ZIP. Se surgir erro, copie o conteudo do arquivo de diagnostico, **sem senhas, chaves de API ou dados privados**. Essa melhoria de diagnostico nao garante por si so que todo erro de inicializacao esteja corrigido.
+
+## Correcao de abertura e tela final (1.2.1)
+
+- Corrigido erro de sintaxe PowerShell na linha da opcao de zoom (faltava fechar um parenteses do `if`). Esse erro impedia o programa de abrir.
+- Adicionada a secao **6. Tela final do video (opcional, PNG/JPG)**.
+- Clique **Escolher imagem** e selecione a arte de encerramento do seu computador. Pode ser um layout com espacos para videos recomendados e inscricao, como uma tela final de YouTube.
+- Defina o tempo: **5, 8, 10 ou 15 segundos** (padrao: 8).
+- O programa converte a imagem para video H.264 na mesma resolucao da exportacao, insere uma trilha de audio silenciosa e acrescenta a tela ao **fim** do vlog. Sem imagem selecionada, nenhum encerramento adicional sera inserido.
+- A imagem **nao e enviada a nenhuma API**; fica somente no PC. O efeito deve ser testado em exportacao completa.
+- **Importante:** as caixas e o circulo de uma arte final do YouTube sao apenas desenhos dentro do arquivo MP4. Para torná-los clicaveis, configure os elementos de **tela final no YouTube Studio**, alinhando seus videos e botao de inscricao com as areas da imagem.
+- Se o editor nao abrir, execute `Iniciar_EditorIA.ps1`, e se houver erro consulte `EditorIA_erro_ao_abrir.txt`.
+
