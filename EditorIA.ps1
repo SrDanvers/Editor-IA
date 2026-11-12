@@ -293,6 +293,67 @@ if($Worker){
      return 'neutra'
    }
    $previewFile=Join-Path (Split-Path $JobPath) 'preview.jpg'
+   # IA visual gratuita opcional: Moondream instalado localmente com Ollama.
+   $script:localVisionCount=0
+   function LocalVisionCategory($cut){
+     if(-not [bool]$j.localVision -or $script:localVisionCount -ge 8){return 'neutra'}
+     $shot=Join-Path $temporary ('visao_local_'+$script:localVisionCount+'.jpg')
+     $at=[double]$cut.start+[double]$cut.length*0.5
+     $prior=$ErrorActionPreference;$ErrorActionPreference='Continue'
+     try{$null= & $j.ffmpeg -hide_banner -loglevel error -nostdin -y -ss (Fmt $at) -i ([string]$cut.path) -frames:v 1 -vf 'scale=384:-2' -q:v 6 $shot 2>&1 | Out-String}finally{$ErrorActionPreference=$prior}
+     if(-not(Test-Path -LiteralPath $shot)){return 'neutra'}
+     $script:localVisionCount++
+     try{
+       $b64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($shot))
+       $body=@{
+         model='moondream';stream=$false;keep_alive='0'
+         prompt='Choose exactly one instrumental background music category that fits this video frame: calma, animada, viagem, neutra. Return only that single word.'
+         images=@($b64);options=@{num_predict=30;num_ctx=512}
+       } | ConvertTo-Json -Depth 8 -Compress
+       $resp=Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/generate' -Method Post -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ContentType 'application/json; charset=utf-8' -TimeoutSec 240
+       $ans=([string]$resp.response).ToLowerInvariant()
+       if($ans -match '\b(calma|animada|viagem|neutra)\b'){return $Matches[1]}
+     }catch{
+       Add-Content -LiteralPath (Join-Path (Split-Path $JobPath) 'visao_local_erros.txt') -Encoding UTF8 -Value $_.Exception.Message
+     }finally{Remove-Item -LiteralPath $shot -Force -ErrorAction SilentlyContinue}
+     return 'neutra'
+   }
+   function PickMusic($cut,$slot,$category){
+     if($songs.Count -eq 0){return $null}
+     $matched=@($songs | Where-Object {$_.BaseName.ToLowerInvariant() -match ('^'+$category+'[-_ ]')})
+     # Alternar de verdade quando ha mais de uma musica licenciada.
+     if($matched.Count -lt 2){$matched=$songs}
+     $index=($slot % $matched.Count)
+     return $matched[$index].FullName
+   }
+   function CreateMusicBed($cut,$clipNumber,$category){
+     if($songs.Count -eq 0){return $null}
+     $bedDir=Join-Path $temporary ('trilha_'+$clipNumber)
+     New-Item -ItemType Directory -Force -Path $bedDir | Out-Null
+     $listPath=Join-Path $bedDir 'musicas.txt'
+     $parts=New-Object 'System.Collections.Generic.List[string]'
+     $remaining=[double]$cut.length
+     $partIndex=0
+     while($remaining -gt 0.05 -and $partIndex -lt 180){
+       CheckCancel
+       $duration=[Math]::Min(40.0,$remaining)
+       $song=PickMusic $cut (($clipNumber-1)+$partIndex) $category
+       $path=Join-Path $bedDir ('audio_{0:D3}.m4a' -f $partIndex)
+       $fadeOut=[Math]::Max(0,$duration-[Math]::Min(1.2,$duration/4))
+       $af='aresample=44100,volume=0.13,afade=t=in:st=0:d=0.8,afade=t=out:st='+(Fmt $fadeOut)+':d=1.2'
+       # Encurtar a trilha em blocos de ate 40s. Musicass sao editadas, nao baixadas.
+       Execute -ffArgs @('-hide_banner','-loglevel','error','-nostdin','-y','-stream_loop','-1','-i',$song,'-t',(Fmt $duration),'-vn','-af',$af,'-ar','44100','-ac','2','-c:a','aac','-b:a','128k',$path) | Out-Null
+       $parts.Add("file '"+$path.Replace("'","'\''")+"'")
+       $remaining-=$duration
+       $partIndex++
+       Add-Content -LiteralPath (Join-Path (Split-Path $JobPath) 'trilhas_escolhidas.txt') -Encoding UTF8 -Value ("Cena "+$clipNumber+" / Parte "+$partIndex+": "+[IO.Path]::GetFileName($song)+" ("+$category+")")
+     }
+     if($parts.Count -eq 0){return $null}
+     [IO.File]::WriteAllLines($listPath,$parts,[Text.UTF8Encoding]::new($false))
+     $bed=Join-Path $bedDir 'trilha_completa.m4a'
+     Execute -ffArgs @('-hide_banner','-loglevel','error','-nostdin','-y','-f','concat','-safe','0','-i',$listPath,'-c','copy',$bed) | Out-Null
+     return $bed
+   }
    $list=Join-Path $temporary 'concat.txt'
    $records=New-Object System.Collections.Generic.List[string]
    $i=0
@@ -300,6 +361,18 @@ if($Worker){
      CheckCancel
      $i++
      $piece=Join-Path $temporary ('clip_{0:D4}.mp4' -f $i)
+     # Previa EM MOVIMENTO a 360p e 15fps: reproduz enquanto o 4K e renderizado.
+     # Pode levar alguns segundos para ficar pronta; nao e imagem fixa.
+     if([bool]$j.livePreview){
+       $proxy=Join-Path $temporary ('previsualizacao_{0:D4}.mp4' -f $i)
+       $prior=$ErrorActionPreference;$ErrorActionPreference='Continue'
+       try {
+         $null= & $j.ffmpeg -hide_banner -loglevel error -nostdin -y -ss (Fmt ([double]$c.start)) -i ([string]$c.path) -t (Fmt ([double]$c.length)) -an -vf 'fps=15,scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2' -c:v libx264 -preset ultrafast -crf 29 -threads 2 -movflags +faststart $proxy 2>&1 | Out-String
+       } finally {$ErrorActionPreference=$prior}
+       if(Test-Path -LiteralPath $proxy){
+         Set-Content -LiteralPath (Join-Path (Split-Path $JobPath) 'preview_video.txt') -Value $proxy -Encoding UTF8
+       }
+     }
      # Uma miniatura por cena selecionada: leve e visivel durante a exportacao.
      $thumb=Join-Path (Split-Path $JobPath) ('preview_{0:D4}.jpg' -f $i)
      $at=[Math]::Max(0,[double]$c.start+[double]$c.length*0.5)
@@ -335,20 +408,25 @@ if($Worker){
      }
      $params+=@('-c:v','libx264','-preset',$preset,'-crf',$crf,'-threads','2','-c:a','aac','-b:a','192k','-ar','44100','-ac','2','-shortest',$piece)
      [void](Execute -ffArgs $params)
-     if($visionOn -and $songs.Count -gt 0){
-       $cat=VisualCategory $c
-       $matched=@($songs | Where-Object { $_.BaseName.ToLowerInvariant() -match ('^'+$cat+'[-_ ]') })
-       if($matched.Count -eq 0){$matched=@($songs | Where-Object { $_.BaseName.ToLowerInvariant() -match '^neutra[-_ ]' })}
-       if($matched.Count -eq 0){$matched=$songs}
-       if($matched.Count -gt 0){
-         $track=$matched[(($i-1) % $matched.Count)].FullName
-         $mix=Join-Path $temporary ('mix_{0:D4}.mp4' -f $i)
-         # Musica selecionada so para este trecho, com diminuicao conforme o audio original.
-         # Voz sempre principal, musica a 9% em nivel linear.
-         $fx='[1:a]volume=0.09,afade=t=in:st=0:d=1[m];[0:a][m]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.94[a]'
-         Execute -ffArgs @('-hide_banner','-nostdin','-y','-i',$piece,'-stream_loop','-1','-i',$track,'-filter_complex',$fx,'-map','0:v:0','-map','[a]','-c:v','copy','-c:a','aac','-b:a','192k','-shortest',$mix) | Out-Null
-         Move-Item -LiteralPath $mix -Destination $piece -Force
-         Report ([int](25+69*$i/$clips.Count)) ("Cena $i - "+$cat+": "+[IO.Path]::GetFileName($track))
+     # Trilha automatica por cena: funciona SEM API e troca a musica a cada 40s.
+     if($songs.Count -gt 0){
+       $category='neutra'
+       if($visionOn){$category=VisualCategory $c}
+       elseif([bool]$j.localVision){$category=LocalVisionCategory $c}
+       else {
+         $filename=[IO.Path]::GetFileNameWithoutExtension([string]$c.path).ToLowerInvariant()
+         if($filename -match 'praia|viagem|ferias|natureza|montanha|travel|passeio'){$category='viagem'}
+         elseif($filename -match 'festa|esporte|piscina|corrida|danca|aventura'){$category='animada'}
+         elseif($filename -match 'pordosol|por.do.sol|descanso|dormir|calm'){$category='calma'}
+       }
+       $bed=CreateMusicBed $c $i $category
+       if($bed){
+         $mixed=Join-Path $temporary ('mix_{0:D4}.mp4' -f $i)
+         # Voz do clipe prioritária; trilha gravada a nivel baixo e limitada.
+         $fx='[0:a][1:a]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.94[a]'
+         Execute -ffArgs @('-hide_banner','-loglevel','error','-nostdin','-y','-i',$piece,'-i',$bed,'-filter_complex',$fx,'-map','0:v:0','-map','[a]','-c:v','copy','-c:a','aac','-ar','44100','-ac','2','-b:a','192k','-shortest',$mixed) | Out-Null
+         Move-Item -LiteralPath $mixed -Destination $piece -Force
+         Report ([int](25+69*$i/$clips.Count)) ("Cena $i mixada com musicas variadas ("+$category+")")
        }
      }
      if(Test-Path -LiteralPath $piece -PathType Leaf){
@@ -358,51 +436,12 @@ if($Worker){
      Report ([int](25+69*$i/$clips.Count)) ("Processando corte $i de "+$clips.Count)
    }
    [IO.File]::WriteAllLines($list,$records,[Text.UTF8Encoding]::new($false))
-   # Unir cortes antes de aplicar musica. Nao recodificar o video nesta etapa.
-   $selectedMusic=$null
-   if($j.musicFolder -and (Test-Path -LiteralPath ([string]$j.musicFolder) -PathType Container)){
-     $songs=@(Get-ChildItem -LiteralPath ([string]$j.musicFolder) -File -Recurse |
-       Where-Object { @('.mp3','.wav','.m4a','.flac','.ogg') -contains $_.Extension.ToLowerInvariant() } |
-       Sort-Object FullName)
-     if($songs.Count -gt 0){
-       # Heuristica leve: volume medio dos primeiros 15 segundos de ate 4 fontes.
-       # Nao identifica sentimentos nem interpreta visualmente o video.
-       $samples=New-Object System.Collections.ArrayList
-       foreach($v in @($info | Where-Object audio | Select-Object -First 4)){
-         $prior=$ErrorActionPreference;$ErrorActionPreference='Continue'
-         try{$scan= & $j.ffmpeg -hide_banner -nostdin -t 15 -i ([string]$v.path) -vn -af volumedetect -f null NUL 2>&1 | Out-String}finally{$ErrorActionPreference=$prior}
-         if($scan -match 'mean_volume:\s*(-?[0-9.]+)\s*dB'){
-           [void]$samples.Add([double]::Parse($Matches[1],[Globalization.CultureInfo]::InvariantCulture))
-         }
-       }
-       $mood='neutra'
-       if($samples.Count -gt 0){
-         $avg=($samples | Measure-Object -Average).Average
-         if($avg -ge -21){$mood='animada'}
-         elseif($avg -le -35){$mood='calma'}
-       }
-       $names=(@($info | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension([string]$_.path) }) -join ' ').ToLowerInvariant()
-       if($names -match 'praia|mar|piscina|viagem|ferias|natureza|travel'){ $mood='viagem' }
-       $matched=@($songs | Where-Object { $_.BaseName.ToLowerInvariant() -match ('^'+$mood+'[-_ ]') })
-       if($matched.Count -eq 0){$matched=@($songs | Where-Object { $_.BaseName.ToLowerInvariant() -match '^neutra[-_ ]' })}
-       if($matched.Count -eq 0){$matched=$songs}
-       # Selecionar de modo estavel, alternando as faixas conforme a quantidade de cortes.
-       $selectedMusic=$matched[($clips.Count % $matched.Count)].FullName
-       Report 94 ("Trilha escolhida ("+$mood+"): "+[IO.Path]::GetFileName($selectedMusic))
-     }
-   }
+   # Cada corte ja recebeu sua trilha: nao colocar uma unica musica no vlog inteiro.
    $joined=Join-Path $temporary 'video_montado.mp4'
    Execute -ffArgs @('-hide_banner','-nostdin','-y','-f','concat','-safe','0','-i',$list,'-c','copy','-movflags','+faststart',$joined) | Out-Null
-   if($selectedMusic -and -not $visionOn){
-     # Compressao lateral reduz a musica quando o audio original fica forte.
-     # Mantem as falas originais e copia o video sem nova codificacao 4K.
-     $audioFx='[1:a]volume=0.09,afade=t=in:st=0:d=1.5[m];[0:a][m]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.94[a]'
-     Execute -ffArgs @('-hide_banner','-nostdin','-y','-i',$joined,'-stream_loop','-1','-i',$selectedMusic,'-filter_complex',$audioFx,'-map','0:v:0','-map','[a]','-c:v','copy','-c:a','aac','-b:a','192k','-movflags','+faststart','-shortest',[string]$j.output) | Out-Null
-   } else {
-     Move-Item -LiteralPath $joined -Destination ([string]$j.output) -ErrorAction Stop
-   }
+   Move-Item -LiteralPath $joined -Destination ([string]$j.output) -ErrorAction Stop
    if(-not(Test-Path -LiteralPath ([string]$j.output) -PathType Leaf)){throw 'Arquivo final nao foi encontrado'}
-   Report 100 ("Concluido. "+$(if($selectedMusic){"Musica: "+[IO.Path]::GetFileName($selectedMusic)+'. '}else{'Sem biblioteca musical. '})+"Video: "+$j.output) 'success'
+   Report 100 ("Concluido. "+$(if($songs.Count -gt 0){"Trilhas por cena. "}else{"Sem biblioteca musical. "})+"Video: "+$j.output) 'success'
  } catch {
    if($_.Exception.Message -match 'Cancelado'){Report 0 'Processamento cancelado' 'cancel'}
    else{Report 0 $_.Exception.Message 'error'}
