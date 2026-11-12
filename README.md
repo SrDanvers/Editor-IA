@@ -90,3 +90,13 @@ Consulte os arquivos do repositório antes de redistribuir o software. O conteú
 - Em 4K a imagem pode perder alguma nitidez devido a ampliacao digital e nova codificacao.
 
 Teste sugerido: escolha 3 a 5 videos curtos, deixe zoom e previa ativados, exporte inicialmente a 720p, confira os movimentos e depois teste 1080p ou 4K. A integracao ao Windows ainda requer teste no computador do usuario.
+
+## Correcao de inicializacao (12/11/2026)
+
+O arquivo `Iniciar_EditorIA.ps1` agora executa a interface na mesma sessao, mostra uma caixa de erro se a abertura falhar e salva os detalhes em `EditorIA_erro_ao_abrir.txt` na pasta do projeto. Se o programa nao abrir, inicie pelo PowerShell com:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File .\Iniciar_EditorIA.ps1
+```
+
+Execute esse comando dentro da pasta extraida do ZIP. Se surgir erro, copie o conteudo do arquivo de diagnostico, **sem senhas, chaves de API ou dados privados**. Essa melhoria de diagnostico nao garante por si so que todo erro de inicializacao esteja corrigido.
