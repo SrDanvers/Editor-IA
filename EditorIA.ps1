@@ -855,4 +855,139 @@ $run.Add_Click({
 })
 $stop.Add_Click({if($script:active){New-Item -ItemType File -Path (Join-Path $script:work 'cancel.flag') -Force | Out-Null;$status.Text='Cancelando...'}})
 $folder.Add_Click({$p=Split-Path $out.Text;if($p -and (Test-Path $p)){Start-Process explorer.exe -ArgumentList ('"'+$p+'"')}})
+
+# ===== Editor IA 1.3: interface organizada em tres abas =====
+$f.Text='Editor IA 1.3 - Editor de Vlogs'
+$f.ClientSize=New-Object Drawing.Size(1130,760)
+$f.AutoScroll=$false
+$f.MinimumSize=New-Object Drawing.Size(1000,720)
+$f.BackColor=[Drawing.Color]::FromArgb(17,18,23)
+$t.Text='EDITOR IA   |   STUDIO 1.3'
+$t.Location=New-Object Drawing.Point(26,14)
+$t.Size=New-Object Drawing.Size(900,37)
+$t.Font=New-Object Drawing.Font('Segoe UI',19,[Drawing.FontStyle]::Bold)
+$t.ForeColor=[Drawing.Color]::FromArgb(255,204,0)
+$intro=@($f.Controls | Where-Object {$_ -is [Windows.Forms.Label] -and $_.Top -eq 52} | Select-Object -First 1)
+if($intro.Count -gt 0){
+ $intro[0].Text='EDIÇÃO AUTOMÁTICA  /  CORTES  /  MÚSICA  /  ZOOM  /  EXPORTAÇÃO'
+ $intro[0].Location=New-Object Drawing.Point(28,54)
+ $intro[0].Size=New-Object Drawing.Size(980,22)
+ $intro[0].Font=New-Object Drawing.Font('Segoe UI',9)
+ $intro[0].ForeColor=[Drawing.Color]::FromArgb(170,175,185)
+}
+$tabs=New-Object Windows.Forms.TabControl
+$tabs.Location=New-Object Drawing.Point(21,88)
+$tabs.Size=New-Object Drawing.Size(1086,640)
+$tabs.Anchor='Top,Bottom,Left,Right'
+$tabs.Font=New-Object Drawing.Font('Segoe UI Semibold',10)
+$tabs.Padding=New-Object Drawing.Point(22,10)
+$tabs.Appearance='Normal'
+$tabs.BackColor=[Drawing.Color]::FromArgb(24,26,33)
+$projectTab=New-Object Windows.Forms.TabPage
+$projectTab.Text='  01  PROJETO E ARQUIVOS  '
+$editTab=New-Object Windows.Forms.TabPage
+$editTab.Text='  02  EDIÇÃO AUTOMÁTICA  '
+$watchTab=New-Object Windows.Forms.TabPage
+$watchTab.Text='  03  ACOMPANHAR CORTES  '
+foreach($page in @($projectTab,$editTab,$watchTab)){
+ $page.BackColor=[Drawing.Color]::FromArgb(25,27,34)
+ $page.ForeColor=[Drawing.Color]::White
+ $page.AutoScroll=$true
+ [void]$tabs.TabPages.Add($page)
+}
+[void]$f.Controls.Add($tabs)
+function Place($c,$page,$x,$y,$w,$h){
+ if(-not $c){return}
+ $page.Controls.Add($c)
+ $c.Location=New-Object Drawing.Point($x,$y)
+ if($w -gt 0 -and $h -gt 0){$c.Size=New-Object Drawing.Size($w,$h)}
+ if($c -is [Windows.Forms.Button]){
+   $c.FlatStyle=[Windows.Forms.FlatStyle]::Flat
+   $c.FlatAppearance.BorderSize=0
+   if($c -ne $run){
+     $c.BackColor=[Drawing.Color]::FromArgb(49,53,66)
+     $c.ForeColor=[Drawing.Color]::White
+   }
+ }
+ if($c -is [Windows.Forms.CheckBox]) {
+   $c.ForeColor=[Drawing.Color]::White
+   $c.BackColor=[Drawing.Color]::Transparent
+ }
+ if($c -is [Windows.Forms.TextBox] -or $c -is [Windows.Forms.ListBox]){
+   $c.BackColor=[Drawing.Color]::FromArgb(244,246,249)
+   $c.ForeColor=[Drawing.Color]::FromArgb(28,30,38)
+ }
+}
+# Posicionar os campos que ja possuem seus eventos, sem duplicar handlers.
+Place $files $projectTab 25 67 790 146
+Place $add $projectTab 834 67 184 32
+Place $addFolder $projectTab 834 104 184 32
+Place $remove $projectTab 834 141 184 32
+Place $clear $projectTab 834 178 184 32
+Place $out $projectTab 25 271 790 30
+Place $save $projectTab 834 270 184 32
+Place $quality $projectTab 265 322 310 30
+Place $ff $projectTab 25 381 790 30
+Place $browse $projectTab 834 380 184 32
+Place $music $projectTab 25 451 790 30
+Place $musicBrowse $projectTab 834 450 184 32
+Place $outroImage $projectTab 25 521 635 30
+Place $outroBrowse $projectTab 672 520 184 32
+Place $outroDuration $projectTab 866 521 152 30
+# Os textos antigos eram descartados pelos criadores; mover pelo cabecalho.
+$labelMap=@{
+ '1. Videos para analisar'=@(25,35,450,26)
+ '2. Arquivo final MP4'=@(25,240,500,26)
+ '3. Qualidade de exportacao'=@(25,321,230,27)
+ '4. Caminho do ffmpeg.exe'=@(25,349,590,26)
+ '5. Biblioteca musical (pasta com faixas licenciadas)'=@(25,419,660,26)
+ '6. Tela final do video (opcional, PNG/JPG)'=@(25,489,720,26)
+}
+foreach($label in @($f.Controls | Where-Object {$_ -is [Windows.Forms.Label] -and $labelMap.ContainsKey($_.Text)})){
+ $p=$labelMap[$label.Text]
+ Place $label $projectTab $p[0] $p[1] $p[2] $p[3]
+}
+# Opcoes de edição em um painel amplo, sem colisoes entre os controles.
+$editHead=New-Object Windows.Forms.Label
+$editHead.Text='AUTOMAÇÃO DO VLOG'
+$editHead.ForeColor=[Drawing.Color]::FromArgb(255,204,0)
+$editHead.Font=New-Object Drawing.Font('Segoe UI Semibold',14)
+Place $editHead $editTab 28 24 540 32
+Place $visual $editTab 29 82 770 30
+Place $autoZoom $editTab 29 122 770 30
+Place $livePreview $editTab 29 162 770 30
+Place $localVision $editTab 29 202 770 30
+Place $cleanVoice $editTab 29 242 770 30
+Place $transcribe $editTab 29 282 770 30
+Place $musicState $editTab 29 327 970 50
+Place $run $editTab 29 408 472 43
+Place $stop $editTab 517 408 225 43
+Place $folder $editTab 758 408 244 43
+Place $bar $editTab 29 475 973 22
+Place $status $editTab 29 513 973 65
+$run.BackColor=[Drawing.Color]::FromArgb(255,204,0)
+$run.ForeColor=[Drawing.Color]::Black
+$run.Font=New-Object Drawing.Font('Segoe UI Semibold',11)
+$bar.Style='Continuous'
+# Acompanhamento: o monitor de video e os controles ficam juntos.
+Place $previewTitle $watchTab 28 26 950 32
+Place $preview $watchTab 28 72 722 408
+if($script:playerHost){
+ Place $script:playerHost $watchTab 28 72 722 408
+ $script:playerHost.BringToFront()
+}
+Place $previewInfo $watchTab 28 495 722 55
+Place $playClip $watchTab 774 89 245 43
+Place $openPlan $watchTab 774 146 245 43
+Place $previewHelp $watchTab 774 222 246 165
+$previewTitle.Font=New-Object Drawing.Font('Segoe UI Semibold',13)
+$previewTitle.ForeColor=[Drawing.Color]::FromArgb(255,204,0)
+$watchHint=New-Object Windows.Forms.Label
+$watchHint.Text='CENA ATUAL: versão leve em movimento. O vídeo final continua sendo exportado na qualidade escolhida.'
+$watchHint.ForeColor=[Drawing.Color]::FromArgb(180,185,195)
+Place $watchHint $watchTab 28 555 980 26
+$tabs.SelectedIndex=0
+# Nao oculta o progresso: ao iniciar a exportacao mudar para a aba de acompanhamento.
+$run.Add_Click({ $tabs.SelectedTab=$watchTab })
+
 [void]$f.ShowDialog()
