@@ -1,5 +1,5 @@
 
-## Editor IA 1.3 — Programa para Windows (.exe)
+## Editor IA 1.4 — Programa para Windows (.exe)
 
 A interface foi reorganizada em **tres abas** para reduzir a quantidade de controles na mesma tela:
 
@@ -13,8 +13,8 @@ O programa agora possui um **inicializador nativo `EditorIA.exe`** em C#/.NET Fr
 
 1. Abra [GitHub Actions — Compilar Editor IA EXE Windows](https://github.com/SrDanvers/Editor-IA/actions/workflows/compilar-exe.yml).
 2. Selecione a execução mais recente **bem-sucedida**.
-3. Na seção **Artifacts**, baixe **EditorIA-1.3-Windows-EXE**.
-4. Extraia `EditorIA_1.3_Windows.zip` e abra **EditorIA.exe**.
+3. Na seção **Artifacts**, baixe **EditorIA-1.4-Windows-EXE**.
+4. Extraia `EditorIA_1.4_Windows.zip` e abra **EditorIA.exe**.
 5. Se o Windows SmartScreen alertar sobre um aplicativo sem assinatura digital, só execute depois de conferir que o pacote veio do seu repositório. O EXE não está assinado.
 
 **Atenção:** o workflow precisa ter terminado com sucesso. O codigo foi publicado; a compilação e a abertura do EXE devem ser confirmadas pelo resultado do GitHub Actions e no seu PC.
@@ -26,7 +26,7 @@ O programa agora possui um **inicializador nativo `EditorIA.exe`** em C#/.NET Fr
 
 ---
 
-# Editor IA 1.3 Beta — Interface renovada e executavel Windows
+# Editor IA 1.4 Beta — Controle de cortes e zoom seco
 
 Editor de vlogs em PowerShell 5.1 e FFmpeg, feito para computador de 8 GB de RAM com gráficos Intel HD 3000. Tema escuro/amarelo.
 
@@ -140,3 +140,17 @@ Execute esse comando dentro da pasta extraida do ZIP. Se surgir erro, copie o co
 - **Importante:** as caixas e o circulo de uma arte final do YouTube sao apenas desenhos dentro do arquivo MP4. Para torná-los clicaveis, configure os elementos de **tela final no YouTube Studio**, alinhando seus videos e botao de inscricao com as areas da imagem.
 - Se o editor nao abrir, execute `Iniciar_EditorIA.ps1`, e se houver erro consulte `EditorIA_erro_ao_abrir.txt`.
 
+
+## Novo na versao 1.4: controle de tempo dos cortes e dois tipos de zoom
+
+Na aba **02 EDICAO AUTOMATICA**:
+
+- **DURACAO PREFERIDA DOS CORTES:** 15, 30, 60 ou 90 segundos (30 como padrao). Esse tempo ajuda a selecionar trechos de fala de duracao proxima, mas **nao corta frases por limite rigido**. Trechos podem durar mais ou menos conforme os silêncios e a opcao de transcricao.
+- **TEMPO DO ZOOM:** 2, 3, 5 ou 8 segundos (5 como padrao).
+- **ESTILO DE ZOOM:** `Suave` (aproxima e afasta gradualmente) ou `Seco` (aproxima imediatamente para 1.2x e retorna de uma vez ao enquadramento original).
+- A caixa existente **Zoom cinematografico automatico** liga ou desliga ambos os estilos.
+- O zoom permanece centralizado e em algumas cenas; nao segue rostos nem objetos. A previa 360p tenta refletir o mesmo tempo e estilo do zoom final.
+
+O EXE foi ajustado para atualizar os scripts incorporados quando voce instalar uma versao nova, sem ficar executando codigo antigo por engano.
+
+**Estado:** a versao foi publicada no GitHub. As expressoes de zoom foram verificadas com FFmpeg, mas a GUI completa, o EXE e a renderizacao no Windows do usuario ainda precisam de teste. Para o primeiro teste, escolha 720p e um vlog curto; depois teste 1080p/4K. 
