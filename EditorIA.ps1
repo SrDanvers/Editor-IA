@@ -366,7 +366,7 @@ if($Worker){
      if([bool]$j.livePreview){
        $proxy=Join-Path $temporary ('previsualizacao_{0:D4}.mp4' -f $i)
        $proxyFx='fps=15,scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2'
-       if([bool]$j.autoZoom -and ($i % 3 -eq 2) -and ([double]$c.length -ge 7){
+       if(([bool]$j.autoZoom) -and ($i % 3 -eq 2) -and ([double]$c.length -ge 7)){
          $proxyFx+=",zoompan=z='1+0.20*sin(PI*min(on\,75)/75)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=640x360:fps=15"
        }
        $prior=$ErrorActionPreference;$ErrorActionPreference='Continue'
