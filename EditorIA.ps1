@@ -851,6 +851,7 @@ $run.Add_Click({
    $script:lastClip=$null;$playClip.Text='Reproduzir trecho concluido';$playClip.Enabled=$false;$previewInfo.Text='Aguardando a primeira cena...'
    if($preview.Image){$preview.Image.Dispose();$preview.Image=$null}
    $timer.Start()
+   if($tabs){$tabs.SelectedTab=$watchTab}
  }catch{[Windows.Forms.MessageBox]::Show($_.Exception.Message,'Editor IA') | Out-Null}
 })
 $stop.Add_Click({if($script:active){New-Item -ItemType File -Path (Join-Path $script:work 'cancel.flag') -Force | Out-Null;$status.Text='Cancelando...'}})
@@ -858,9 +859,9 @@ $folder.Add_Click({$p=Split-Path $out.Text;if($p -and (Test-Path $p)){Start-Proc
 
 # ===== Editor IA 1.3: interface organizada em tres abas =====
 $f.Text='Editor IA 1.3 - Editor de Vlogs'
-$f.ClientSize=New-Object Drawing.Size(1130,760)
+$f.ClientSize=New-Object Drawing.Size(1130,690)
 $f.AutoScroll=$false
-$f.MinimumSize=New-Object Drawing.Size(1000,720)
+$f.MinimumSize=New-Object Drawing.Size(1000,690)
 $f.BackColor=[Drawing.Color]::FromArgb(17,18,23)
 $t.Text='EDITOR IA   |   STUDIO 1.3'
 $t.Location=New-Object Drawing.Point(26,14)
@@ -877,7 +878,7 @@ if($intro.Count -gt 0){
 }
 $tabs=New-Object Windows.Forms.TabControl
 $tabs.Location=New-Object Drawing.Point(21,88)
-$tabs.Size=New-Object Drawing.Size(1086,640)
+$tabs.Size=New-Object Drawing.Size(1086,575)
 $tabs.Anchor='Top,Bottom,Left,Right'
 $tabs.Font=New-Object Drawing.Font('Segoe UI Semibold',10)
 $tabs.Padding=New-Object Drawing.Point(22,10)
@@ -924,24 +925,24 @@ Place $add $projectTab 834 67 184 32
 Place $addFolder $projectTab 834 104 184 32
 Place $remove $projectTab 834 141 184 32
 Place $clear $projectTab 834 178 184 32
-Place $out $projectTab 25 271 790 30
-Place $save $projectTab 834 270 184 32
-Place $quality $projectTab 265 322 310 30
-Place $ff $projectTab 25 381 790 30
-Place $browse $projectTab 834 380 184 32
-Place $music $projectTab 25 451 790 30
-Place $musicBrowse $projectTab 834 450 184 32
-Place $outroImage $projectTab 25 521 635 30
-Place $outroBrowse $projectTab 672 520 184 32
-Place $outroDuration $projectTab 866 521 152 30
+Place $out $projectTab 25 251 790 30
+Place $save $projectTab 834 250 184 32
+Place $quality $projectTab 265 300 310 30
+Place $ff $projectTab 25 360 790 30
+Place $browse $projectTab 834 359 184 32
+Place $music $projectTab 25 428 790 30
+Place $musicBrowse $projectTab 834 427 184 32
+Place $outroImage $projectTab 25 496 635 30
+Place $outroBrowse $projectTab 672 495 184 32
+Place $outroDuration $projectTab 866 496 152 30
 # Os textos antigos eram descartados pelos criadores; mover pelo cabecalho.
 $labelMap=@{
  '1. Videos para analisar'=@(25,35,450,26)
- '2. Arquivo final MP4'=@(25,240,500,26)
- '3. Qualidade de exportacao'=@(25,321,230,27)
- '4. Caminho do ffmpeg.exe'=@(25,349,590,26)
- '5. Biblioteca musical (pasta com faixas licenciadas)'=@(25,419,660,26)
- '6. Tela final do video (opcional, PNG/JPG)'=@(25,489,720,26)
+ '2. Arquivo final MP4'=@(25,224,500,26)
+ '3. Qualidade de exportacao'=@(25,299,230,27)
+ '4. Caminho do ffmpeg.exe'=@(25,332,590,26)
+ '5. Biblioteca musical (pasta com faixas licenciadas)'=@(25,400,660,26)
+ '6. Tela final do video (opcional, PNG/JPG)'=@(25,468,720,26)
 }
 foreach($label in @($f.Controls | Where-Object {$_ -is [Windows.Forms.Label] -and $labelMap.ContainsKey($_.Text)})){
  $p=$labelMap[$label.Text]
@@ -988,6 +989,6 @@ $watchHint.ForeColor=[Drawing.Color]::FromArgb(180,185,195)
 Place $watchHint $watchTab 28 555 980 26
 $tabs.SelectedIndex=0
 # Nao oculta o progresso: ao iniciar a exportacao mudar para a aba de acompanhamento.
-$run.Add_Click({ $tabs.SelectedTab=$watchTab })
+
 
 [void]$f.ShowDialog()
