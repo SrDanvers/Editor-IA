@@ -1,4 +1,32 @@
-# Editor IA 1.2.1 Beta — Zoom e tela final personalizada
+
+## Editor IA 1.3 — Programa para Windows (.exe)
+
+A interface foi reorganizada em **tres abas** para reduzir a quantidade de controles na mesma tela:
+
+- **01 PROJETO E ARQUIVOS:** importe os vídeos, escolha qualidade, pasta de musicas, destino MP4 e imagem da tela final.
+- **02 EDICAO AUTOMATICA:** selecione zoom, visao, cortes por fala, reducao de vento e inicie a montagem.
+- **03 ACOMPANHAR CORTES:** video em movimento, acompanhamento das cenas, abertura do ultimo corte e plano CSV.
+
+O programa agora possui um **inicializador nativo `EditorIA.exe`** em C#/.NET Framework. Este inicializador abre o editor PowerShell sem precisar iniciar arquivos PS1 manualmente. O motor de edição continua sendo FFmpeg + PowerShell; **não é uma reescrita completa em C#**. Não exige instalar SDK .NET no PC: Windows 10 já inclui .NET Framework compatível.
+
+### Como baixar o EXE
+
+1. Abra [GitHub Actions — Compilar Editor IA EXE Windows](https://github.com/SrDanvers/Editor-IA/actions/workflows/compilar-exe.yml).
+2. Selecione a execução mais recente **bem-sucedida**.
+3. Na seção **Artifacts**, baixe **EditorIA-1.3-Windows-EXE**.
+4. Extraia `EditorIA_1.3_Windows.zip` e abra **EditorIA.exe**.
+5. Se o Windows SmartScreen alertar sobre um aplicativo sem assinatura digital, só execute depois de conferir que o pacote veio do seu repositório. O EXE não está assinado.
+
+**Atenção:** o workflow precisa ter terminado com sucesso. O codigo foi publicado; a compilação e a abertura do EXE devem ser confirmadas pelo resultado do GitHub Actions e no seu PC.
+
+## Requisitos
+- Windows 10 64-bit, PowerShell 5.1, FFmpeg/ffprobe.
+- Bibliotecas musicais são arquivos locais licenciados por você.
+- O EXE não inclui FFmpeg nem músicas; selecione os arquivos existentes dentro da interface.
+
+---
+
+# Editor IA 1.3 Beta — Interface renovada e executavel Windows
 
 Editor de vlogs em PowerShell 5.1 e FFmpeg, feito para computador de 8 GB de RAM com gráficos Intel HD 3000. Tema escuro/amarelo.
 
