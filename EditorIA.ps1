@@ -449,6 +449,23 @@ if($Worker){
      $records.Add("file '"+$piece.Replace("'","'\''")+"'")
      Report ([int](25+69*$i/$clips.Count)) ("Processando corte $i de "+$clips.Count)
    }
+   # Tela final opcional: imagem PNG/JPG do usuario transformada em cena MP4.
+   if($j.outroImage){
+     $outroPath=[string]$j.outroImage
+     if(-not(Test-Path -LiteralPath $outroPath -PathType Leaf)){throw ("Imagem da tela final nao encontrada: "+$outroPath)}
+     $outroSeconds=[double]$j.outroSeconds
+     if($outroSeconds -lt 3 -or $outroSeconds -gt 30){$outroSeconds=8}
+     $outroClip=Join-Path $temporary 'tela_final.mp4'
+     $outroFilter="scale=$($w):$($h):force_original_aspect_ratio=decrease,pad=$($w):$($h):(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p"
+     Report 94 ("Criando tela final de "+(Fmt $outroSeconds)+" segundos...")
+     # Mesmos codecs, resolucao e fps dos cortes; audio silencioso para manter sincronismo.
+     Execute -ffArgs @('-hide_banner','-loglevel','error','-nostdin','-y','-loop','1','-framerate','30','-i',$outroPath,
+       '-f','lavfi','-i','anullsrc=r=44100:cl=stereo',
+       '-t',(Fmt $outroSeconds),'-vf',$outroFilter,'-r','30',
+       '-map','0:v:0','-map','1:a:0','-c:v','libx264','-preset',$preset,'-crf',$crf,'-threads','2','-pix_fmt','yuv420p',
+       '-c:a','aac','-b:a','192k','-ar','44100','-ac','2','-shortest',$outroClip) | Out-Null
+     $records.Add("file '"+$outroClip.Replace("'","'\''")+"'")
+   }
    [IO.File]::WriteAllLines($list,$records,[Text.UTF8Encoding]::new($false))
    # Cada corte ja recebeu sua trilha: nao colocar uma unica musica no vlog inteiro.
    $joined=Join-Path $temporary 'video_montado.mp4'
@@ -468,8 +485,8 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [Windows.Forms.Application]::EnableVisualStyles()
 $f=New-Object Windows.Forms.Form
-$f.Text='Editor IA 1.2 Beta - Zoom Cinematografico'
-$f.Size=New-Object Drawing.Size(1170,840)
+$f.Text='Editor IA 1.2.1 Beta - Zoom e Tela Final'
+$f.Size=New-Object Drawing.Size(1170,870)
 $f.AutoScroll=$true
 $f.StartPosition='CenterScreen'
 $f.BackColor=[Drawing.Color]::FromArgb(25,25,28)
@@ -488,7 +505,7 @@ function Field($x,$y,$w){
  $t=New-Object Windows.Forms.TextBox;$t.Location=New-Object Drawing.Point($x,$y);$t.Size=New-Object Drawing.Size($w,26)
  $f.Controls.Add($t);return $t
 }
-$t=Label 'EDITOR IA 1.2 BETA' 20 12
+$t=Label 'EDITOR IA 1.2.1 BETA' 20 12
 $t.Font=New-Object Drawing.Font('Segoe UI',18,[Drawing.FontStyle]::Bold)
 $t.ForeColor=[Drawing.Color]::Gold
 [void](Label 'Vlogs: ordem cronologica, cenas longas, fundo desfocado e musica automatica' 20 52)
@@ -584,6 +601,27 @@ $stop=Button 'CANCELAR' 418 583 145;$stop.Enabled=$false
 $folder=Button 'Abrir pasta' 576 583 183
 $bar=New-Object Windows.Forms.ProgressBar;$bar.Location=New-Object Drawing.Point(20,633)
 $bar.Size=New-Object Drawing.Size(739,19);$f.Controls.Add($bar)
+[void](Label '6. Tela final do video (opcional, PNG/JPG)' 20 701 530)
+$outroImage=Field 20 733 480
+$outroBrowse=Button 'Escolher imagem' 510 731 145
+$outroBrowse.Add_Click({
+ $d=New-Object Windows.Forms.OpenFileDialog
+ $d.Filter='Imagens|*.png;*.jpg;*.jpeg;*.bmp|Todos os arquivos|*.*'
+ if($d.ShowDialog() -eq 'OK'){$outroImage.Text=$d.FileName}
+})
+$outroDuration=New-Object Windows.Forms.ComboBox
+$outroDuration.DropDownStyle='DropDownList'
+$outroDuration.Location=New-Object Drawing.Point(666,733)
+$outroDuration.Size=New-Object Drawing.Size(94,28)
+$outroDuration.BackColor=[Drawing.Color]::White
+$outroDuration.ForeColor=[Drawing.Color]::Black
+[void]$outroDuration.Items.Add('5 segundos')
+[void]$outroDuration.Items.Add('8 segundos')
+[void]$outroDuration.Items.Add('10 segundos')
+[void]$outroDuration.Items.Add('15 segundos')
+$outroDuration.SelectedIndex=1
+$f.Controls.Add($outroDuration)
+$outroDuration.BringToFront()
 $status=Label 'A pre-visualizacao mostra quadros dos trechos em edicao, sem decodificacao 4K continua.' 20 664
 $previewTitle=Label 'PRE-VISUALIZACAO DA MONTAGEM' 787 88 350
 $previewTitle.ForeColor=[Drawing.Color]::Gold
@@ -775,6 +813,9 @@ $run.Add_Click({
    if($visual.Checked -and -not $env:OPENAI_API_KEY){
      throw 'Analise visual requer OPENAI_API_KEY. Desmarque a opcao ou configure a chave.'
    }
+   if($outroImage.Text.Trim() -and -not(Test-Path -LiteralPath $outroImage.Text.Trim() -PathType Leaf)){
+     throw 'A imagem da tela final nao foi encontrada. Escolha um PNG/JPG valido ou deixe vazio.'
+   }
    $inputs=@()
    foreach($v in $files.Items){
      $path=[string]$v
@@ -800,7 +841,7 @@ $run.Add_Click({
    $script:work=Join-Path $env:TEMP ('EditorIA_'+[guid]::NewGuid().ToString('N'))
    New-Item -ItemType Directory -Path $script:work | Out-Null
    $jobfile=Join-Path $script:work 'job.json'
-   @{ffmpeg=$engine;ffprobe=$probe;inputs=$inputs;output=$out.Text.Trim();quality=@('4K','1080p','720p')[$quality.SelectedIndex];musicFolder=$music.Text.Trim();visual=$visual.Checked;cleanVoice=$cleanVoice.Checked;transcribe=$transcribe.Checked;livePreview=$livePreview.Checked;localVision=$localVision.Checked;autoZoom=$autoZoom.Checked} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $jobfile -Encoding UTF8
+   @{ffmpeg=$engine;ffprobe=$probe;inputs=$inputs;output=$out.Text.Trim();quality=@('4K','1080p','720p')[$quality.SelectedIndex];musicFolder=$music.Text.Trim();visual=$visual.Checked;cleanVoice=$cleanVoice.Checked;transcribe=$transcribe.Checked;livePreview=$livePreview.Checked;localVision=$localVision.Checked;autoZoom=$autoZoom.Checked;outroImage=$outroImage.Text.Trim();outroSeconds=@(5,8,10,15)[$outroDuration.SelectedIndex]} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $jobfile -Encoding UTF8
    $args='-NoProfile -ExecutionPolicy Bypass -File "'+$PSCommandPath+'" -Worker -JobPath "'+$jobfile+'"'
    $script:proc=Start-Process powershell.exe -ArgumentList $args -PassThru -WindowStyle Hidden
    $script:active=$true;$run.Enabled=$false;$stop.Enabled=$true;$bar.Value=0;$status.Text='Processando...'
