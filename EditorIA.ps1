@@ -454,8 +454,8 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [Windows.Forms.Application]::EnableVisualStyles()
 $f=New-Object Windows.Forms.Form
-$f.Text='Editor IA 1.0 Beta - Montagem Completa'
-$f.Size=New-Object Drawing.Size(1170,785)
+$f.Text='Editor IA 1.1 Beta - Previa em Movimento e Musicas Variadas'
+$f.Size=New-Object Drawing.Size(1170,840)
 $f.AutoScroll=$true
 $f.StartPosition='CenterScreen'
 $f.BackColor=[Drawing.Color]::FromArgb(25,25,28)
@@ -474,7 +474,7 @@ function Field($x,$y,$w){
  $t=New-Object Windows.Forms.TextBox;$t.Location=New-Object Drawing.Point($x,$y);$t.Size=New-Object Drawing.Size($w,26)
  $f.Controls.Add($t);return $t
 }
-$t=Label 'EDITOR IA 1.0 BETA' 20 12
+$t=Label 'EDITOR IA 1.1 BETA' 20 12
 $t.Font=New-Object Drawing.Font('Segoe UI',18,[Drawing.FontStyle]::Bold)
 $t.ForeColor=[Drawing.Color]::Gold
 [void](Label 'Vlogs: ordem cronologica, cenas longas, fundo desfocado e musica automatica' 20 52)
@@ -574,28 +574,83 @@ $preview.BackColor=[Drawing.Color]::Black
 $preview.BorderStyle='FixedSingle'
 $preview.SizeMode='Zoom'
 $f.Controls.Add($preview)
+# Hospedar o reprodutor WPF na mesma area. Quando indisponivel, mostrar JPEG.
+$script:player=$null
+$script:playerHost=$null
+try{
+ Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase,WindowsFormsIntegration -ErrorAction Stop
+ $script:player=[System.Windows.Controls.MediaElement]::new()
+ $script:player.LoadedBehavior=[System.Windows.Controls.MediaState]::Manual
+ $script:player.UnloadedBehavior=[System.Windows.Controls.MediaState]::Stop
+ $script:player.Stretch=[System.Windows.Media.Stretch]::Uniform
+ $script:player.IsMuted=$true
+ $script:playerHost=[System.Windows.Forms.Integration.ElementHost]::new()
+ $script:playerHost.Location=New-Object Drawing.Point(786,121)
+ $script:playerHost.Size=New-Object Drawing.Size(345,225)
+ $script:playerHost.BackColor=[Drawing.Color]::Black
+ $script:playerHost.Child=$script:player
+ $f.Controls.Add($script:playerHost)
+ $script:playerHost.BringToFront()
+ $script:player.Add_MediaEnded({try{$script:player.Position=[TimeSpan]::Zero;$script:player.Play()}catch{}})
+ $script:player.Add_MediaFailed({
+   $script:playerHost.Visible=$false
+   $preview.BringToFront()
+ })
+}catch{$script:player=$null;$script:playerHost=$null}
+$script:previewVideoPath=''
+function UpdateMotionPreview {
+ if(-not $script:work -or -not $script:player){return}
+ $note=Join-Path $script:work 'preview_video.txt'
+ if(-not(Test-Path -LiteralPath $note -PathType Leaf)){return}
+ try{
+   $path=(Get-Content -LiteralPath $note -Raw -Encoding UTF8).Trim()
+   if(-not $path -or $path -eq $script:previewVideoPath -or -not(Test-Path -LiteralPath $path -PathType Leaf)){return}
+   $script:player.Stop()
+   $script:player.Source=[Uri]::new($path,[UriKind]::Absolute)
+   $script:player.Position=[TimeSpan]::Zero
+   $script:playerHost.Visible=$true
+   $script:playerHost.BringToFront()
+   $script:player.Play()
+   $script:previewVideoPath=$path
+ }catch{
+   if($script:playerHost){$script:playerHost.Visible=$false}
+   $preview.BringToFront()
+ }
+}
 $previewInfo=Label 'Aguardando a primeira cena...' 786 359 345
 $previewInfo.AutoEllipsis=$true
 $previewInfo.Size=New-Object Drawing.Size(345,48)
-$previewHelp=Label 'Imagem do trecho atual, nao video ao vivo. Clique abaixo para reproduzir um corte processado.' 786 411 350
+$previewHelp=Label 'Reproducao real do corte em 360p durante renderizacao 4K. Repete a cena ate a proxima ficar pronta.' 786 411 350
 $previewHelp.Size=New-Object Drawing.Size(345,70)
+$livePreview=New-Object Windows.Forms.CheckBox
+$livePreview.Text='Mostrar cortes em movimento durante a edicao (360p)'
+$livePreview.Location=New-Object Drawing.Point(786,523)
+$livePreview.Size=New-Object Drawing.Size(355,30)
+$livePreview.Checked=$true
+$f.Controls.Add($livePreview)
+$localVision=New-Object Windows.Forms.CheckBox
+$localVision.Text='IA visual GRATIS local (Ollama + Moondream, opcional)'
+$localVision.Location=New-Object Drawing.Point(786,553)
+$localVision.Size=New-Object Drawing.Size(355,30)
+$localVision.Checked=$false
+$f.Controls.Add($localVision)
 $cleanVoice=New-Object Windows.Forms.CheckBox
 $cleanVoice.Text='Reduzir vento e priorizar voz'
-$cleanVoice.Location=New-Object Drawing.Point(786,535)
+$cleanVoice.Location=New-Object Drawing.Point(786,586)
 $cleanVoice.Size=New-Object Drawing.Size(345,30)
 $cleanVoice.ForeColor=[Drawing.Color]::White
 $cleanVoice.Checked=$true
 $f.Controls.Add($cleanVoice)
-$musicState=Label 'Musicas: escolha uma pasta com MP3s licenciados.' 786 575 345
+$musicState=Label 'Musicas: escolha uma pasta com MP3s licenciados.' 786 615 345
 $musicState.Size=New-Object Drawing.Size(345,55)
 $transcribe=New-Object Windows.Forms.CheckBox
 $transcribe.Text='Cortes por transcricao de voz (API paga; envia audio)'
-$transcribe.Location=New-Object Drawing.Point(786,635)
+$transcribe.Location=New-Object Drawing.Point(786,678)
 $transcribe.Size=New-Object Drawing.Size(355,28)
 $transcribe.ForeColor=[Drawing.Color]::White
 $transcribe.Checked=$false
 $f.Controls.Add($transcribe)
-$openPlan=Button 'Ver plano dos cortes (CSV)' 786 670 345
+$openPlan=Button 'Ver plano dos cortes (CSV)' 786 712 345
 $openPlan.Add_Click({
  if(-not $script:work){[Windows.Forms.MessageBox]::Show('Inicie uma montagem primeiro.','Editor IA') | Out-Null;return}
  $plan=Join-Path $script:work 'plano_cortes.csv'
@@ -636,6 +691,7 @@ function UpdatePreview {
 $timer=New-Object Windows.Forms.Timer;$timer.Interval=800
 $timer.Add_Tick({
  if(-not $script:active){return}
+ UpdateMotionPreview
  UpdatePreview
  $s=Join-Path $script:work 'status.json'
  if(Test-Path $s){
@@ -681,6 +737,15 @@ $run.Add_Click({
    if($transcribe.Checked -and -not $env:OPENAI_API_KEY){
      throw 'Transcricao requer OPENAI_API_KEY configurada. Desmarque a opcao ou configure a chave sem coloca-la no GitHub.'
    }
+   if($localVision.Checked){
+     try{
+       $resp=Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/tags' -Method Get -TimeoutSec 3
+       $found=@($resp.models | Where-Object {$_.name -match '^moondream(:|$)'})
+       if($found.Count -eq 0){throw 'Modelo moondream nao instalado. No PowerShell: ollama pull moondream'}
+     }catch{
+       throw ("IA local indisponivel: "+$_.Exception.Message+". Desmarque a opcao para selecao musical gratis por regras.")
+     }
+   }
    if($visual.Checked -and -not $env:OPENAI_API_KEY){
      throw 'Analise visual requer OPENAI_API_KEY. Desmarque a opcao ou configure a chave.'
    }
@@ -706,11 +771,13 @@ $run.Add_Click({
    $script:work=Join-Path $env:TEMP ('EditorIA_'+[guid]::NewGuid().ToString('N'))
    New-Item -ItemType Directory -Path $script:work | Out-Null
    $jobfile=Join-Path $script:work 'job.json'
-   @{ffmpeg=$engine;ffprobe=$probe;inputs=$inputs;output=$out.Text.Trim();quality=@('4K','1080p','720p')[$quality.SelectedIndex];musicFolder=$music.Text.Trim();visual=$visual.Checked;cleanVoice=$cleanVoice.Checked;transcribe=$transcribe.Checked} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $jobfile -Encoding UTF8
+   @{ffmpeg=$engine;ffprobe=$probe;inputs=$inputs;output=$out.Text.Trim();quality=@('4K','1080p','720p')[$quality.SelectedIndex];musicFolder=$music.Text.Trim();visual=$visual.Checked;cleanVoice=$cleanVoice.Checked;transcribe=$transcribe.Checked;livePreview=$livePreview.Checked;localVision=$localVision.Checked} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $jobfile -Encoding UTF8
    $args='-NoProfile -ExecutionPolicy Bypass -File "'+$PSCommandPath+'" -Worker -JobPath "'+$jobfile+'"'
    $script:proc=Start-Process powershell.exe -ArgumentList $args -PassThru -WindowStyle Hidden
    $script:active=$true;$run.Enabled=$false;$stop.Enabled=$true;$bar.Value=0;$status.Text='Processando...'
    $script:previewStamp=[datetime]::MinValue
+   $script:previewVideoPath=''
+   if($script:player){try{$script:player.Stop();$script:player.Source=$null}catch{}}
    $script:lastClip=$null;$playClip.Text='Reproduzir trecho concluido';$playClip.Enabled=$false;$previewInfo.Text='Aguardando a primeira cena...'
    if($preview.Image){$preview.Image.Dispose();$preview.Image=$null}
    $timer.Start()
